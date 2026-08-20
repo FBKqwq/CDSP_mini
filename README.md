@@ -5,7 +5,7 @@
 ```text
 CDSP-mini_demo/
 ├─ frontend/   uni-app 微信小程序前端
-├─ backend/    后端服务预留目录
+├─ backend/    FastAPI 后端脚手架
 └─ 微信小程序项目需求文档.md
 ```
 
@@ -27,7 +27,17 @@ frontend/dist/dev/mp-weixin
 
 ## 后端开发
 
-后端尚未实施，接口和数据契约冻结后在 `backend/` 中独立建设。边界说明见 [backend/README.md](./backend/README.md)。
+后端已建立 FastAPI 脚手架，基础 CRUD 与大模型对话按独立模块组织。当前接口只定义契约，未接入数据库和大模型服务。
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+uvicorn app.main:app --reload
+```
+
+具体目录、接口状态和后续接入点见 [backend/README.md](./backend/README.md)。
 
 ## 远程仓库
 

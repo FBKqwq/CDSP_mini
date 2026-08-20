@@ -18,9 +18,8 @@
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "岐黄智诊",
+    "navigationBarTitleText": "中医智能诊疗",
     "navigationBarBackgroundColor": "#F3F5EF",
     "backgroundColor": "#F3F5EF"
   }
 }
-

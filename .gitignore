@@ -1,7 +1,14 @@
 node_modules/
 dist/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.py[cod]
+*.egg-info/
 .playwright-cli/
 output/
+.env
 .env.local
 .env.*.local
 coverage/
