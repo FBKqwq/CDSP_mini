@@ -1,0 +1,26 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#F3F5EF"
+      }
+    },
+    {
+      "path": "pages/workbench/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#F3F5EF",
+        "enablePullDownRefresh": false
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "岐黄智诊",
+    "navigationBarBackgroundColor": "#F3F5EF",
+    "backgroundColor": "#F3F5EF"
+  }
+}
+
