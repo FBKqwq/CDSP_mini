@@ -5,18 +5,21 @@ from pydantic import Field
 from app.contracts.common import ApiModel, ConsultationContext, DiagnosisStage
 
 
-class PatientCreate(ApiModel):
+class PatientProfileRead(ApiModel):
+    id: str
+    code: str
     name: str = Field(min_length=1, max_length=80)
     gender: Literal["男", "女", "未知"]
     age: int | None = Field(default=None, ge=0, le=150)
 
 
-class PatientRead(PatientCreate):
-    id: str
-    code: str
+class PatientProfileUpdate(ApiModel):
+    name: str = Field(min_length=1, max_length=80)
+    gender: Literal["男", "女", "未知"]
+    age: int | None = Field(default=None, ge=0, le=150)
 
 
-class DoctorRead(ApiModel):
+class ConsultationExpertRead(ApiModel):
     id: str
     name: str
     title: str
@@ -25,11 +28,21 @@ class DoctorRead(ApiModel):
     unavailable_reason: str | None = Field(default=None, alias="unavailableReason")
 
 
-class DiseaseGroupRead(ApiModel):
+class MedicalHistoryRead(ApiModel):
     id: str
     name: str
-    description: str
-    doctors: list[DoctorRead] = Field(default_factory=list)
+    description: str | None = None
+    diagnosed_at: str | None = Field(default=None, alias="diagnosedAt")
+
+
+class MedicalHistoryCreate(ApiModel):
+    name: str = Field(min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=500)
+    diagnosed_at: str | None = Field(default=None, alias="diagnosedAt")
+
+
+class MedicalHistoryUpdate(MedicalHistoryCreate):
+    pass
 
 
 class ChatMessageRead(ApiModel):
@@ -45,6 +58,7 @@ class ConsultationSnapshot(ApiModel):
     context: ConsultationContext
     messages: list[ChatMessageRead] = Field(default_factory=list)
     diagnosis: "DiagnosisSummary | None" = None
+    prescription: "Prescription | None" = None
 
 
 class ConsultationUpdate(ApiModel):
@@ -54,7 +68,7 @@ class ConsultationUpdate(ApiModel):
 
 class RecordCreate(ApiModel):
     consultation_id: str = Field(alias="consultationId", min_length=1)
-    role: Literal["patient", "doctor"]
+    role: Literal["patient", "assistant"]
     content: str = Field(min_length=1)
 
 
@@ -90,6 +104,11 @@ class Prescription(ApiModel):
     items: list[PrescriptionItem] = Field(default_factory=list)
     instructions: str
     cautions: str | None = None
+
+
+class TreatmentResult(ApiModel):
+    diagnosis: DiagnosisSummary
+    prescription: Prescription | None = None
 
 
 class DiagnosisReport(ApiModel):

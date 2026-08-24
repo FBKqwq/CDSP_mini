@@ -34,8 +34,8 @@ class DiagnosisStage(StrEnum):
 class ConsultationContext(ApiModel):
     session_version: int = Field(alias="sessionVersion", ge=0)
     patient_id: str = Field(alias="patientId", min_length=1)
-    disease_group_id: str = Field(alias="diseaseGroupId", min_length=1)
-    doctor_id: str = Field(alias="doctorId", min_length=1)
+    medical_history_id: str | None = Field(default=None, alias="medicalHistoryId")
+    expert_id: str = Field(alias="expertId", min_length=1)
     consultation_id: str | None = Field(default=None, alias="consultationId")
     instance_id: str | None = Field(default=None, alias="instanceId")
     stage: DiagnosisStage = DiagnosisStage.CONSULTATION

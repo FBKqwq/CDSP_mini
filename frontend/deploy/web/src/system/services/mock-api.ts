@@ -2,9 +2,10 @@ import { AppError } from '@/services/app-error'
 import { compareReportRecords } from '@/domain/report-comparison'
 import type {
   CreateChatInstanceResult,
-  CreatePatientInput,
   LlmChartApi,
   LoginInput,
+  MedicalHistoryInput,
+  UpdatePatientProfileInput,
 } from '@/types/api'
 import type {
   AuthSession,
@@ -13,9 +14,12 @@ import type {
   ConsultationSnapshot,
   DiagnosisReport,
   DiagnosisSummary,
-  DiseaseGroup,
-  Patient,
+  ConsultationExpert,
+  MedicalHistory,
+  PatientProfile,
+  Prescription,
   ReportComparison,
+  TreatmentResult,
   UserSummary,
 } from '@/types/domain'
 
@@ -23,44 +27,47 @@ const wait = (milliseconds = 180) => new Promise<void>((resolve) => setTimeout(r
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 
 const user: UserSummary = {
-  id: 'doctor-001',
-  displayName: '陈医生',
-  role: '主治医师',
-  organization: '中医智能诊疗中心',
+  id: 'user-patient-001',
+  displayName: '李女士',
+  role: '患者',
+  organization: '个人健康账户',
 }
 
-const diseaseGroups: DiseaseGroup[] = [
+let patientProfile: PatientProfile = {
+  id: 'patient-001',
+  code: 'P20260819001',
+  name: '李女士',
+  gender: '女',
+  age: 46,
+}
+
+let medicalHistories: MedicalHistory[] = [
   {
-    id: 'metabolic',
+    id: 'history-metabolic',
     name: '代谢综合征',
-    description: '结合中医辨证与代谢指标进行综合评估',
-    doctors: [
-      { id: 'doctor-fang', name: '方邦江', title: '主任医师', specialty: '代谢与脾胃', enabled: true },
-      { id: 'doctor-liu', name: '刘清泉', title: '主任医师', specialty: '急症与体质', enabled: true },
-    ],
+    description: '既往诊断，持续随访中',
+    diagnosedAt: '2025-11-18',
   },
   {
-    id: 'cardiovascular',
-    name: '心脑血管',
-    description: '围绕胸闷、心悸、眩晕等症状进行辨证',
-    doctors: [
-      { id: 'doctor-zhang', name: '张教授', title: '主任医师', specialty: '心脑血管', enabled: true },
-      {
-        id: 'doctor-remote',
-        name: '王教授',
-        title: '特邀专家',
-        specialty: '脑血管康复',
-        enabled: false,
-        unavailableReason: '当前不在排班时间',
-      },
-    ],
+    id: 'history-hypertension',
+    name: '高血压',
+    description: '既往诊断，规律监测血压',
+    diagnosedAt: '2024-06-03',
   },
 ]
 
-let patients: Patient[] = [
-  { id: 'patient-001', code: 'P20260819001', name: '李女士', gender: '女', age: 46 },
-  { id: 'patient-002', code: 'P20260819002', name: '周先生', gender: '男', age: 58 },
-  { id: 'patient-003', code: 'P20260819003', name: '赵女士', gender: '女', age: 35 },
+const consultationExperts: ConsultationExpert[] = [
+  { id: 'expert-fang', name: '方邦江', title: '主任医师', specialty: '代谢与脾胃', enabled: true },
+  { id: 'expert-liu', name: '刘清泉', title: '主任医师', specialty: '急症与体质', enabled: true },
+  { id: 'expert-zhang', name: '张教授', title: '主任医师', specialty: '心脑血管', enabled: true },
+  {
+    id: 'expert-remote',
+    name: '王教授',
+    title: '特邀专家',
+    specialty: '脑血管康复',
+    enabled: false,
+    unavailableReason: '当前不在问诊时段',
+  },
 ]
 
 const diagnosisA: DiagnosisSummary = {
@@ -90,6 +97,18 @@ const diagnosisB: DiagnosisSummary = {
   })),
 }
 
+const prescriptionA: Prescription = {
+  name: '健脾化湿调理方',
+  items: [
+    { medicine: '茯苓', dosage: '15g', usage: '水煎服' },
+    { medicine: '白术', dosage: '10g', usage: '水煎服' },
+    { medicine: '陈皮', dosage: '6g', usage: '水煎服' },
+    { medicine: '泽泻', dosage: '10g', usage: '水煎服' },
+  ],
+  instructions: '每日一剂，早晚温服。',
+  cautions: '处方仅展示服务端记录，实际用药须由医师复核。',
+}
+
 let reports: DiagnosisReport[] = [
   {
     id: 'report-20260819',
@@ -98,17 +117,7 @@ let reports: DiagnosisReport[] = [
     diseaseName: '代谢综合征',
     status: 'completed',
     diagnosis: diagnosisA,
-    prescription: {
-      name: '健脾化湿调理方',
-      items: [
-        { medicine: '茯苓', dosage: '15g', usage: '水煎服' },
-        { medicine: '白术', dosage: '10g', usage: '水煎服' },
-        { medicine: '陈皮', dosage: '6g', usage: '水煎服' },
-        { medicine: '泽泻', dosage: '10g', usage: '水煎服' },
-      ],
-      instructions: '每日一剂，早晚温服。',
-      cautions: '处方仅展示服务端记录，实际用药须由医师复核。',
-    },
+    prescription: prescriptionA,
   },
   {
     id: 'report-20260722',
@@ -132,13 +141,13 @@ let reports: DiagnosisReport[] = [
 const snapshots = new Map<string, ConsultationSnapshot>()
 
 function contextKey(context: ConsultationContext): string {
-  return [context.patientId, context.diseaseGroupId, context.doctorId].join(':')
+  return [context.patientId, context.medicalHistoryId || 'new-question', context.expertId].join(':')
 }
 
 export class MockLlmChartApi implements LlmChartApi {
   async login(input: LoginInput): Promise<AuthSession> {
     await wait()
-    if (input.username !== 'doctor' || input.password !== 'demo123') {
+    if (input.username !== 'patient' || input.password !== 'demo123') {
       throw new AppError('AUTH_INVALID')
     }
     return {
@@ -157,46 +166,70 @@ export class MockLlmChartApi implements LlmChartApi {
     return clone(user)
   }
 
-  async listPatients(query = ''): Promise<Patient[]> {
+  async getPatientProfile(): Promise<PatientProfile> {
     await wait()
-    const keyword = query.trim().toLowerCase()
-    return clone(
-      patients.filter(
-        (patient) =>
-          !keyword ||
-          patient.name.toLowerCase().includes(keyword) ||
-          patient.code.toLowerCase().includes(keyword),
-      ),
-    )
+    return clone(patientProfile)
   }
 
-  async createPatient(input: CreatePatientInput): Promise<Patient> {
+  async updatePatientProfile(input: UpdatePatientProfileInput): Promise<PatientProfile> {
     await wait()
     const name = input.name.trim()
-    if (!name || name.length > 30) throw new AppError('VALIDATION_ERROR', '姓名长度应为 1～30 个字符')
-    const patient: Patient = {
-      id: `patient-${Date.now()}`,
-      code: `P${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${String(patients.length + 1).padStart(3, '0')}`,
+    if (!name || (input.age !== undefined && (input.age < 0 || input.age > 150))) {
+      throw new AppError('VALIDATION_ERROR')
+    }
+    patientProfile = { ...patientProfile, ...input, name }
+    return clone(patientProfile)
+  }
+
+  async listMedicalHistories(): Promise<MedicalHistory[]> {
+    await wait()
+    return clone(medicalHistories)
+  }
+
+  async createMedicalHistory(input: MedicalHistoryInput): Promise<MedicalHistory> {
+    await wait()
+    const name = input.name.trim()
+    if (!name) throw new AppError('VALIDATION_ERROR')
+    const history: MedicalHistory = {
+      id: `history-${Date.now()}-${medicalHistories.length}`,
       name,
-      gender: input.gender,
-      age: input.age,
+      description: input.description?.trim() || undefined,
+      diagnosedAt: input.diagnosedAt || undefined,
     }
-    patients = [patient, ...patients]
-    return clone(patient)
+    medicalHistories = [...medicalHistories, history]
+    return clone(history)
   }
 
-  async deletePatient(patientId: string): Promise<void> {
+  async updateMedicalHistory(
+    historyId: string,
+    input: MedicalHistoryInput,
+  ): Promise<MedicalHistory> {
     await wait()
-    if (!patients.some((patient) => patient.id === patientId)) {
-      throw new AppError('CONTEXT_INVALID', '患者不存在或已被删除')
+    const index = medicalHistories.findIndex((history) => history.id === historyId)
+    if (index < 0) throw new AppError('CONTEXT_INVALID', '所选历史疾病不存在')
+    const name = input.name.trim()
+    if (!name) throw new AppError('VALIDATION_ERROR')
+    const history: MedicalHistory = {
+      id: historyId,
+      name,
+      description: input.description?.trim() || undefined,
+      diagnosedAt: input.diagnosedAt || undefined,
     }
-    patients = patients.filter((patient) => patient.id !== patientId)
-    reports = reports.filter((report) => report.patientId !== patientId)
+    medicalHistories = medicalHistories.map((item) => (item.id === historyId ? history : item))
+    return clone(history)
   }
 
-  async listDiseaseGroups(): Promise<DiseaseGroup[]> {
+  async deleteMedicalHistory(historyId: string): Promise<void> {
     await wait()
-    return clone(diseaseGroups)
+    if (!medicalHistories.some((history) => history.id === historyId)) {
+      throw new AppError('CONTEXT_INVALID', '所选历史疾病不存在')
+    }
+    medicalHistories = medicalHistories.filter((history) => history.id !== historyId)
+  }
+
+  async listConsultationExperts(): Promise<ConsultationExpert[]> {
+    await wait()
+    return clone(consultationExperts)
   }
 
   async getConsultation(context: ConsultationContext): Promise<ConsultationSnapshot | null> {
@@ -206,7 +239,7 @@ export class MockLlmChartApi implements LlmChartApi {
 
   async createChatInstance(context: ConsultationContext): Promise<CreateChatInstanceResult> {
     await wait(260)
-    if (!context.patientId || !context.diseaseGroupId || !context.doctorId) {
+    if (!context.patientId || !context.expertId) {
       throw new AppError('CONTEXT_INVALID')
     }
     const key = contextKey(context)
@@ -214,7 +247,7 @@ export class MockLlmChartApi implements LlmChartApi {
       const greeting: ChatMessage = {
         id: `greeting-${Date.now()}`,
         role: 'assistant',
-        content: '您好，我是中医智能诊疗助手。请描述当前最困扰您的症状，以及持续时间、舌苔、睡眠和饮食情况。',
+        content: '您好，我会协助问诊专家了解您的情况。请描述当前最困扰您的症状、持续时间，以及睡眠和饮食情况。',
         status: 'sent',
         createdAt: Date.now(),
       }
@@ -229,7 +262,7 @@ export class MockLlmChartApi implements LlmChartApi {
 
   async saveRecord(
     context: ConsultationContext,
-    role: 'patient' | 'doctor',
+    role: 'patient' | 'assistant',
     content: string,
   ): Promise<void> {
     await wait(80)
@@ -244,12 +277,16 @@ export class MockLlmChartApi implements LlmChartApi {
     })
   }
 
-  async enterDiagnosis(context: ConsultationContext): Promise<DiagnosisSummary> {
+  async enterDiagnosis(context: ConsultationContext): Promise<TreatmentResult> {
     await wait(520)
     const diagnosis = clone(diagnosisA)
+    const prescription = clone(prescriptionA)
     const snapshot = snapshots.get(contextKey(context))
-    if (snapshot) snapshot.diagnosis = diagnosis
-    return diagnosis
+    if (snapshot) {
+      snapshot.diagnosis = diagnosis
+      snapshot.prescription = prescription
+    }
+    return { diagnosis, prescription }
   }
 
   async listReports(patientId: string): Promise<DiagnosisReport[]> {

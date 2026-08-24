@@ -5,15 +5,17 @@ from app.modules.crud.schemas import (
     ConsultationSnapshot,
     ConsultationUpdate,
     DiagnosisReport,
-    DiagnosisSummary,
-    DiseaseGroupRead,
-    DoctorRead,
-    PatientCreate,
-    PatientRead,
+    ConsultationExpertRead,
+    MedicalHistoryCreate,
+    MedicalHistoryRead,
+    MedicalHistoryUpdate,
+    PatientProfileRead,
+    PatientProfileUpdate,
     RecordCreate,
     RecordRead,
     ReportComparison,
     ReportComparisonRequest,
+    TreatmentResult,
 )
 from app.modules.crud.service import CrudService, get_crud_service
 
@@ -21,54 +23,69 @@ from app.modules.crud.service import CrudService, get_crud_service
 router = APIRouter(prefix="/llm-chart", tags=["Clinical CRUD"])
 
 
-@router.get("/patients", response_model=ApiEnvelope[list[PatientRead]])
-async def list_patients(
-    query: str | None = None,
+@router.get("/patient-profile", response_model=ApiEnvelope[PatientProfileRead])
+async def get_patient_profile(
     service: CrudService = Depends(get_crud_service),
-) -> ApiEnvelope[list[PatientRead]]:
-    return ok(await service.list_patients(query))
+) -> ApiEnvelope[PatientProfileRead]:
+    return ok(await service.get_patient_profile())
 
 
-@router.post("/patients", response_model=ApiEnvelope[PatientRead])
-async def create_patient(
-    payload: PatientCreate,
+@router.put("/patient-profile", response_model=ApiEnvelope[PatientProfileRead])
+async def update_patient_profile(
+    payload: PatientProfileUpdate,
     service: CrudService = Depends(get_crud_service),
-) -> ApiEnvelope[PatientRead]:
-    return ok(await service.create_patient(payload))
+) -> ApiEnvelope[PatientProfileRead]:
+    return ok(await service.update_patient_profile(payload))
 
 
-@router.delete("/patients/{patient_id}", response_model=ApiEnvelope[None])
-async def delete_patient(
-    patient_id: str,
+@router.get("/medical-histories", response_model=ApiEnvelope[list[MedicalHistoryRead]])
+async def list_medical_histories(
+    service: CrudService = Depends(get_crud_service),
+) -> ApiEnvelope[list[MedicalHistoryRead]]:
+    return ok(await service.list_medical_histories())
+
+
+@router.post("/medical-histories", response_model=ApiEnvelope[MedicalHistoryRead])
+async def create_medical_history(
+    payload: MedicalHistoryCreate,
+    service: CrudService = Depends(get_crud_service),
+) -> ApiEnvelope[MedicalHistoryRead]:
+    return ok(await service.create_medical_history(payload))
+
+
+@router.put("/medical-histories/{history_id}", response_model=ApiEnvelope[MedicalHistoryRead])
+async def update_medical_history(
+    history_id: str,
+    payload: MedicalHistoryUpdate,
+    service: CrudService = Depends(get_crud_service),
+) -> ApiEnvelope[MedicalHistoryRead]:
+    return ok(await service.update_medical_history(history_id, payload))
+
+
+@router.delete("/medical-histories/{history_id}", response_model=ApiEnvelope[None])
+async def delete_medical_history(
+    history_id: str,
     service: CrudService = Depends(get_crud_service),
 ) -> ApiEnvelope[None]:
-    await service.delete_patient(patient_id)
+    await service.delete_medical_history(history_id)
     return ok(None)
 
 
-@router.get("/disease-groups", response_model=ApiEnvelope[list[DiseaseGroupRead]])
-async def list_disease_groups(
+@router.get("/consultation-experts", response_model=ApiEnvelope[list[ConsultationExpertRead]])
+async def list_consultation_experts(
     service: CrudService = Depends(get_crud_service),
-) -> ApiEnvelope[list[DiseaseGroupRead]]:
-    return ok(await service.list_disease_groups())
-
-
-@router.get("/doctors", response_model=ApiEnvelope[list[DoctorRead]])
-async def list_doctors(
-    disease_group_id: str | None = Query(default=None, alias="diseaseGroupId"),
-    service: CrudService = Depends(get_crud_service),
-) -> ApiEnvelope[list[DoctorRead]]:
-    return ok(await service.list_doctors(disease_group_id))
+) -> ApiEnvelope[list[ConsultationExpertRead]]:
+    return ok(await service.list_consultation_experts())
 
 
 @router.get("/consultations", response_model=ApiEnvelope[ConsultationSnapshot | None])
 async def get_consultation(
     patient_id: str = Query(alias="patientId"),
-    disease_group_id: str = Query(alias="diseaseGroupId"),
-    doctor_id: str = Query(alias="doctorId"),
+    medical_history_id: str | None = Query(default=None, alias="medicalHistoryId"),
+    expert_id: str = Query(alias="expertId"),
     service: CrudService = Depends(get_crud_service),
 ) -> ApiEnvelope[ConsultationSnapshot | None]:
-    return ok(await service.get_consultation(patient_id, disease_group_id, doctor_id))
+    return ok(await service.get_consultation(patient_id, medical_history_id, expert_id))
 
 
 @router.post("/consultations", response_model=ApiEnvelope[ConsultationSnapshot])
@@ -104,11 +121,11 @@ async def create_record(
     return ok(await service.create_record(payload))
 
 
-@router.post("/diagnoses", response_model=ApiEnvelope[DiagnosisSummary])
+@router.post("/diagnoses", response_model=ApiEnvelope[TreatmentResult])
 async def enter_diagnosis(
     context: ConsultationContext,
     service: CrudService = Depends(get_crud_service),
-) -> ApiEnvelope[DiagnosisSummary]:
+) -> ApiEnvelope[TreatmentResult]:
     return ok(await service.enter_diagnosis(context))
 
 

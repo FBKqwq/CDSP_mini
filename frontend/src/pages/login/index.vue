@@ -5,7 +5,7 @@ import { appEnv } from '@/config/env'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
-const username = ref(appEnv.useMock ? 'doctor' : '')
+const username = ref(appEnv.useMock ? 'patient' : '')
 const password = ref(appEnv.useMock ? 'demo123' : '')
 const showPassword = ref(false)
 const statusBarHeight = computed(() => `${uni.getSystemInfoSync().statusBarHeight ?? 24}px`)
@@ -42,22 +42,22 @@ function showPrivacy(): void {
     <view class="brand-bar">
       <view class="brand-mini-seal">岐</view>
       <text class="brand-mini-name">中医智能诊疗</text>
-      <text class="brand-version">医务端</text>
+      <text class="brand-version">患者端</text>
     </view>
 
     <view class="login-content">
       <view class="hero-copy">
         <text class="hero-kicker">TCM · INTELLIGENT CARE</text>
-        <text class="hero-title">承岐黄之术，<br />辅临证之思</text>
+        <text class="hero-title">懂您的不适，<br />陪您安心问诊</text>
         <view class="hero-rule"><text class="rule-dot" /><text /></view>
-        <text class="hero-description">面向医务人员的中西医结合智能诊疗工作台</text>
+        <text class="hero-description">面向患者的中西医结合智能健康问诊服务</text>
       </view>
 
       <view class="login-card">
         <view class="card-heading">
           <view>
             <text class="welcome">欢迎回来</text>
-            <text class="welcome-subtitle">使用已授权的系统账号登录</text>
+            <text class="welcome-subtitle">登录后查看您的健康档案与问诊记录</text>
           </view>
           <view class="secure-badge">安全接入</view>
         </view>
@@ -106,7 +106,7 @@ function showPrivacy(): void {
 
         <view v-if="appEnv.useMock" class="demo-tip">
           <text class="demo-label">演示环境</text>
-          <text>账号 doctor · 密码 demo123</text>
+          <text>账号 patient · 密码 demo123</text>
         </view>
       </view>
 
@@ -119,7 +119,7 @@ function showPrivacy(): void {
 
     <view class="login-footer">
       <button class="privacy-button" @tap="showPrivacy">隐私说明</button>
-      <text>本系统仅供已授权医务人员使用</text>
+      <text>AI 问诊不能替代医师面诊，急症请及时线下就医</text>
     </view>
   </view>
 </template>

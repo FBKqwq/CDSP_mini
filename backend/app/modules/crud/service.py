@@ -7,14 +7,16 @@ from app.modules.crud.schemas import (
     ConsultationSnapshot,
     ConsultationUpdate,
     DiagnosisReport,
-    DiagnosisSummary,
-    DiseaseGroupRead,
-    DoctorRead,
-    PatientCreate,
-    PatientRead,
+    ConsultationExpertRead,
+    MedicalHistoryCreate,
+    MedicalHistoryRead,
+    MedicalHistoryUpdate,
+    PatientProfileRead,
+    PatientProfileUpdate,
     RecordCreate,
     RecordRead,
     ReportComparison,
+    TreatmentResult,
 )
 
 
@@ -27,28 +29,38 @@ class CrudService:
             raise FeatureNotImplementedError("CRUD 数据仓储")
         return self._repository_adapter
 
-    async def list_patients(self, query: str | None) -> list[PatientRead]:
-        return await self._repository().list_patients(query)
+    async def get_patient_profile(self) -> PatientProfileRead:
+        return await self._repository().get_patient_profile()
 
-    async def create_patient(self, payload: PatientCreate) -> PatientRead:
-        return await self._repository().create_patient(payload)
+    async def update_patient_profile(self, payload: PatientProfileUpdate) -> PatientProfileRead:
+        return await self._repository().update_patient_profile(payload)
 
-    async def delete_patient(self, patient_id: str) -> None:
-        await self._repository().delete_patient(patient_id)
+    async def list_medical_histories(self) -> list[MedicalHistoryRead]:
+        return await self._repository().list_medical_histories()
 
-    async def list_disease_groups(self) -> list[DiseaseGroupRead]:
-        return await self._repository().list_disease_groups()
+    async def create_medical_history(self, payload: MedicalHistoryCreate) -> MedicalHistoryRead:
+        return await self._repository().create_medical_history(payload)
 
-    async def list_doctors(self, disease_group_id: str | None) -> list[DoctorRead]:
-        return await self._repository().list_doctors(disease_group_id)
+    async def update_medical_history(
+        self,
+        history_id: str,
+        payload: MedicalHistoryUpdate,
+    ) -> MedicalHistoryRead:
+        return await self._repository().update_medical_history(history_id, payload)
+
+    async def delete_medical_history(self, history_id: str) -> None:
+        await self._repository().delete_medical_history(history_id)
+
+    async def list_consultation_experts(self) -> list[ConsultationExpertRead]:
+        return await self._repository().list_consultation_experts()
 
     async def get_consultation(
         self,
         patient_id: str,
-        disease_group_id: str,
-        doctor_id: str,
+        medical_history_id: str | None,
+        expert_id: str,
     ) -> ConsultationSnapshot | None:
-        return await self._repository().get_consultation(patient_id, disease_group_id, doctor_id)
+        return await self._repository().get_consultation(patient_id, medical_history_id, expert_id)
 
     async def create_consultation(self, context: ConsultationContext) -> ConsultationSnapshot:
         return await self._repository().create_consultation(context)
@@ -66,7 +78,7 @@ class CrudService:
     async def create_record(self, payload: RecordCreate) -> RecordRead:
         return await self._repository().create_record(payload)
 
-    async def enter_diagnosis(self, context: ConsultationContext) -> DiagnosisSummary:
+    async def enter_diagnosis(self, context: ConsultationContext) -> TreatmentResult:
         return await self._repository().enter_diagnosis(context)
 
     async def list_reports(self, patient_id: str) -> list[DiagnosisReport]:

@@ -1,13 +1,14 @@
 import { defineStore } from 'pinia'
 import { computed, reactive, ref, shallowRef } from 'vue'
 import { canSendMessage, transitionSession, type SessionAction } from '@/domain/session-machine'
+import { isConsultationContextReady } from '@/domain/consultation-context'
 import { createChatTransport } from '@/services/chat-transport-factory'
 import type { ChatTransport, ConnectionPhase } from '@/services/chat-transport'
 import { toAppError } from '@/services/app-error'
 import { llmChartApi } from '@/services/llm-chart-api'
 import { loadContextIds, saveContextIds } from '@/services/storage'
 import { useAuthStore } from '@/stores/auth'
-import { usePatientStore } from '@/stores/patient'
+import { useHealthContextStore } from '@/stores/health-context'
 import type {
   ChatMessage,
   ConsultationContext,
@@ -15,19 +16,20 @@ import type {
   DiagnosisStage,
   DiagnosisSummary,
   ExecutionStep,
+  Prescription,
   ReportComparison,
   SessionState,
   StreamEvent,
 } from '@/types/domain'
 
-type WorkbenchTab = 'consultation' | 'diagnosis' | 'reports'
+type WorkbenchTab = 'consultation' | 'diagnosis' | 'profile'
 
 export const useConsultationStore = defineStore('consultation', () => {
   const context = reactive<ConsultationContext>({
     sessionVersion: 0,
     patientId: '',
-    diseaseGroupId: '',
-    doctorId: '',
+    medicalHistoryId: undefined,
+    expertId: '',
     stage: 'consultation',
   })
   const sessionState = ref<SessionState>('IDLE')
@@ -39,6 +41,7 @@ export const useConsultationStore = defineStore('consultation', () => {
   const loadingContext = ref(false)
   const enteringDiagnosis = ref(false)
   const diagnosis = ref<DiagnosisSummary | null>(null)
+  const currentPrescription = ref<Prescription | null>(null)
   const reports = ref<DiagnosisReport[]>([])
   const comparison = ref<ReportComparison | null>(null)
   const comparing = ref(false)
@@ -47,12 +50,10 @@ export const useConsultationStore = defineStore('consultation', () => {
   const activeAssistantMessageId = ref<string | null>(null)
   const backgroundInterrupted = ref(false)
 
-  const patientStore = usePatientStore()
+  const healthContextStore = useHealthContextStore()
   const authStore = useAuthStore()
 
-  const hasCompleteContext = computed(
-    () => Boolean(context.patientId && context.diseaseGroupId && context.doctorId),
-  )
+  const hasCompleteContext = computed(() => isConsultationContextReady(context))
   const canSend = computed(() => hasCompleteContext.value && canSendMessage(sessionState.value))
   const isStreaming = computed(
     () => sessionState.value === 'SENDING' || sessionState.value === 'STREAMING',
@@ -74,6 +75,7 @@ export const useConsultationStore = defineStore('consultation', () => {
     executionSteps.value = []
     thinkingSummary.value = ''
     diagnosis.value = null
+    currentPrescription.value = null
     reports.value = []
     comparison.value = null
     activeAssistantMessageId.value = null
@@ -86,60 +88,55 @@ export const useConsultationStore = defineStore('consultation', () => {
   }
 
   async function initialize(): Promise<void> {
-    await patientStore.loadAll()
-    if (!patientStore.patients.length || !patientStore.diseaseGroups.length) return
+    await healthContextStore.loadAll()
+    if (!healthContextStore.profile) return
     const cached = loadContextIds()
-    const patientId = patientStore.findPatient(cached?.patientId ?? '')?.id ?? patientStore.patients[0].id
-    const disease = patientStore.findDisease(cached?.diseaseGroupId ?? '') ?? patientStore.diseaseGroups[0]
-    const doctor = disease.doctors.find((item) => item.id === cached?.doctorId && item.enabled)
-      ?? disease.doctors.find((item) => item.enabled)
-    if (!doctor) return
-    context.patientId = patientId
-    context.diseaseGroupId = disease.id
-    context.doctorId = doctor.id
+    const history = healthContextStore.findMedicalHistory(cached?.medicalHistoryId)
+    const expert = healthContextStore.findConsultationExpert(cached?.expertId ?? '')
+    context.patientId = healthContextStore.profile.id
+    context.medicalHistoryId = history?.id
+    context.expertId = expert?.enabled ? expert.id : ''
     context.sessionVersion += 1
     saveContext()
     await restoreContext()
   }
 
-  async function changeContext(patch: Partial<Pick<ConsultationContext, 'patientId' | 'diseaseGroupId' | 'doctorId'>>): Promise<void> {
+  async function changeContext(patch: Partial<Pick<ConsultationContext, 'medicalHistoryId' | 'expertId'>>): Promise<void> {
     const next = { ...context, ...patch }
     if (
-      next.patientId === context.patientId &&
-      next.diseaseGroupId === context.diseaseGroupId &&
-      next.doctorId === context.doctorId
+      next.medicalHistoryId === context.medicalHistoryId &&
+      next.expertId === context.expertId
     ) {
       return
     }
     transport.value?.close()
     transport.value = null
     context.sessionVersion += 1
-    context.patientId = next.patientId
-    context.diseaseGroupId = next.diseaseGroupId
-    context.doctorId = next.doctorId
+    context.medicalHistoryId = next.medicalHistoryId
+    context.expertId = next.expertId
     resetSessionView()
     saveContext()
     await restoreContext()
   }
 
   function saveContext(): void {
-    if (!hasCompleteContext.value) return
+    if (!context.patientId) return
     saveContextIds({
       patientId: context.patientId,
-      diseaseGroupId: context.diseaseGroupId,
-      doctorId: context.doctorId,
+      medicalHistoryId: context.medicalHistoryId,
+      expertId: context.expertId,
     })
   }
 
   async function restoreContext(): Promise<void> {
-    if (!hasCompleteContext.value) return
+    if (!context.patientId) return
     const version = context.sessionVersion
     const snapshot = { ...context }
     loadingContext.value = true
     errorMessage.value = ''
     try {
       const [consultation, reportRows] = await Promise.all([
-        llmChartApi.getConsultation(snapshot),
+        hasCompleteContext.value ? llmChartApi.getConsultation(snapshot) : Promise.resolve(null),
         llmChartApi.listReports(snapshot.patientId),
       ])
       if (!currentVersion(version)) return
@@ -147,6 +144,7 @@ export const useConsultationStore = defineStore('consultation', () => {
         context.consultationId = consultation.id
         messages.value = consultation.messages
         diagnosis.value = consultation.diagnosis ?? null
+        currentPrescription.value = consultation.prescription ?? null
         if (consultation.diagnosis) context.stage = consultation.diagnosis.stage
       }
       reports.value = reportRows
@@ -178,7 +176,7 @@ export const useConsultationStore = defineStore('consultation', () => {
         messages.value.push({
           id: `greeting-${Date.now()}`,
           role: 'assistant',
-          content: '您好，我是中医智能诊疗助手。请描述当前最困扰您的症状，以及持续时间、舌苔、睡眠和饮食情况。',
+          content: '您好，我会协助问诊专家了解您的情况。请描述当前最困扰您的症状、持续时间，以及睡眠和饮食情况。',
           status: 'sent',
           createdAt: Date.now(),
         })
@@ -271,7 +269,7 @@ export const useConsultationStore = defineStore('consultation', () => {
       const message = messages.value.find((item) => item.id === activeAssistantMessageId.value)
       if (message) {
         message.status = 'sent'
-        void llmChartApi.saveRecord({ ...context }, 'doctor', message.content)
+        void llmChartApi.saveRecord({ ...context }, 'assistant', message.content)
       }
       activeAssistantMessageId.value = null
       thinkingSummary.value = ''
@@ -346,8 +344,9 @@ export const useConsultationStore = defineStore('consultation', () => {
     try {
       const result = await llmChartApi.enterDiagnosis({ ...context })
       if (!currentVersion(version)) return
-      diagnosis.value = result
-      context.stage = result.stage
+      diagnosis.value = result.diagnosis
+      currentPrescription.value = result.prescription ?? null
+      context.stage = result.diagnosis.stage
       activeTab.value = 'diagnosis'
       reports.value = await llmChartApi.listReports(context.patientId)
     } catch (error) {
@@ -408,8 +407,8 @@ export const useConsultationStore = defineStore('consultation', () => {
     transport.value = null
     context.sessionVersion += 1
     context.patientId = ''
-    context.diseaseGroupId = ''
-    context.doctorId = ''
+    context.medicalHistoryId = undefined
+    context.expertId = ''
     resetSessionView()
     activeTab.value = 'consultation'
   }
@@ -425,6 +424,7 @@ export const useConsultationStore = defineStore('consultation', () => {
     loadingContext,
     enteringDiagnosis,
     diagnosis,
+    currentPrescription,
     reports,
     comparison,
     comparing,

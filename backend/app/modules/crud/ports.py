@@ -5,35 +5,45 @@ from app.modules.crud.schemas import (
     ConsultationSnapshot,
     ConsultationUpdate,
     DiagnosisReport,
-    DiagnosisSummary,
-    DiseaseGroupRead,
-    DoctorRead,
-    PatientCreate,
-    PatientRead,
+    ConsultationExpertRead,
+    MedicalHistoryCreate,
+    MedicalHistoryRead,
+    MedicalHistoryUpdate,
+    PatientProfileRead,
+    PatientProfileUpdate,
     RecordCreate,
     RecordRead,
     ReportComparison,
+    TreatmentResult,
 )
 
 
 class ClinicalRepository(Protocol):
     """Persistence/legacy-service boundary for non-LLM clinical data."""
 
-    async def list_patients(self, query: str | None) -> list[PatientRead]: ...
+    async def get_patient_profile(self) -> PatientProfileRead: ...
 
-    async def create_patient(self, payload: PatientCreate) -> PatientRead: ...
+    async def update_patient_profile(self, payload: PatientProfileUpdate) -> PatientProfileRead: ...
 
-    async def delete_patient(self, patient_id: str) -> None: ...
+    async def list_medical_histories(self) -> list[MedicalHistoryRead]: ...
 
-    async def list_disease_groups(self) -> list[DiseaseGroupRead]: ...
+    async def create_medical_history(self, payload: MedicalHistoryCreate) -> MedicalHistoryRead: ...
 
-    async def list_doctors(self, disease_group_id: str | None) -> list[DoctorRead]: ...
+    async def update_medical_history(
+        self,
+        history_id: str,
+        payload: MedicalHistoryUpdate,
+    ) -> MedicalHistoryRead: ...
+
+    async def delete_medical_history(self, history_id: str) -> None: ...
+
+    async def list_consultation_experts(self) -> list[ConsultationExpertRead]: ...
 
     async def get_consultation(
         self,
         patient_id: str,
-        disease_group_id: str,
-        doctor_id: str,
+        medical_history_id: str | None,
+        expert_id: str,
     ) -> ConsultationSnapshot | None: ...
 
     async def create_consultation(self, context: ConsultationContext) -> ConsultationSnapshot: ...
@@ -48,7 +58,7 @@ class ClinicalRepository(Protocol):
 
     async def create_record(self, payload: RecordCreate) -> RecordRead: ...
 
-    async def enter_diagnosis(self, context: ConsultationContext) -> DiagnosisSummary: ...
+    async def enter_diagnosis(self, context: ConsultationContext) -> TreatmentResult: ...
 
     async def list_reports(self, patient_id: str) -> list[DiagnosisReport]: ...
 

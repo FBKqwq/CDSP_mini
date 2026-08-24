@@ -11,7 +11,7 @@ backend/
 │  ├─ core/                配置、异常和统一响应处理
 │  ├─ contracts/           CRUD 与对话模块共享的稳定契约
 │  └─ modules/
-│     ├─ crud/             患者、疾病、咨询、记录、诊断和报告
+│     ├─ crud/             患者档案、历史疾病、专家、咨询、记录和报告
 │     │  ├─ router.py      HTTP 接口
 │     │  ├─ schemas.py     CRUD DTO
 │     │  ├─ ports.py       数据仓储端口
@@ -56,6 +56,19 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 - 流式对话：`/ws/v1/llm-chart/stream?instanceId=...`
 
 除 `/health` 外，接口当前会返回统一的 `501 NOT_IMPLEMENTED`。这是有意设计，防止脚手架用假数据伪装成已接入真实业务。
+
+患者端基础契约为：
+
+- `GET /api/v1/llm-chart/patient-profile`
+- `PUT /api/v1/llm-chart/patient-profile`
+- `GET /api/v1/llm-chart/medical-histories`
+- `POST /api/v1/llm-chart/medical-histories`
+- `PUT /api/v1/llm-chart/medical-histories/{historyId}`
+- `DELETE /api/v1/llm-chart/medical-histories/{historyId}`
+- `GET /api/v1/llm-chart/consultation-experts`
+- `POST /api/v1/llm-chart/diagnoses` 返回同一次诊疗的诊断和可选处方
+
+一个登录身份只绑定一个患者档案；档案只允许读取和更新，不允许创建、删除或切换。历史疾病允许为空并支持 CRUD；问诊专家独立于历史疾病且创建问诊会话时必填。
 
 ## 运行测试
 
