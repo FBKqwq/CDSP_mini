@@ -42,12 +42,14 @@ class MySqlAuthRepository:
         pool = await get_pool()
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
+                # 注意：MySQL 按从左到右求值 SET 子句，此处 failed_login_count 已是 +1 后的新值，
+                # 不要再写成 failed_login_count + 1，否则会提前一次锁定。
                 await cur.execute(
                     """
                     UPDATE app_user
                     SET failed_login_count = failed_login_count + 1,
                         locked_until = CASE
-                            WHEN failed_login_count + 1 >= %s THEN %s
+                            WHEN failed_login_count >= %s THEN %s
                             ELSE locked_until
                         END
                     WHERE id = %s
