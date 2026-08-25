@@ -91,3 +91,12 @@ class AuthService:
             display_name=session.display_name,
             role=session.role,
         )
+
+    async def logout(self, token: str) -> None:
+        repository = self._repository()
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        session = await repository.get_session_by_token_hash(token_hash)
+        # 幂等：会话不存在或已注销，均视为成功。
+        if session is None or session.revoked_at is not None:
+            return
+        await repository.revoke_session(session.session_id, utcnow(), "user_logout")

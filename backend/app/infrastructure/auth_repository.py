@@ -136,3 +136,12 @@ class MySqlAuthRepository:
                     "UPDATE auth_session SET last_seen_at = %s WHERE id = %s",
                     (at, session_id),
                 )
+
+    async def revoke_session(self, session_id: str, at: datetime, reason: str) -> None:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE auth_session SET revoked_at = %s, revoke_reason = %s WHERE id = %s",
+                    (at, reason, session_id),
+                )

@@ -42,6 +42,7 @@ class FakeAuthRepository:
         self.locked_until = {}
         self.sessions = {}
         self.touched = []
+        self.revokes = []
 
     async def get_user_by_username(self, username):
         user = self.users.get(username)
@@ -92,6 +93,12 @@ class FakeAuthRepository:
 
     async def touch_session(self, session_id, at):
         self.touched.append((session_id, at))
+
+    async def revoke_session(self, session_id, at, reason):
+        self.revokes.append((session_id, reason))
+        for session in self.sessions.values():
+            if session["session_id"] == session_id:
+                session["revoked_at"] = at
 
 
 def run(coro):
@@ -183,6 +190,35 @@ def test_multiple_sessions_allowed_for_same_user():
     assert len(repo.sessions) == 2
     assert run(service.me(first.access_token)).id == "user-1"
     assert run(service.me(second.access_token)).id == "user-1"
+
+
+def test_logout_revokes_session():
+    repo = FakeAuthRepository()
+    repo.users["patient"] = make_user()
+    service = AuthService(repository=repo)
+
+    token = run(service.login(LoginRequest(username="patient", password="demo123"))).access_token
+    run(service.logout(token))
+
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    assert repo.sessions[token_hash]["revoked_at"] is not None
+    assert ("user_logout" in [reason for _, reason in repo.revokes])
+
+    with pytest.raises(TokenInvalidError):
+        run(service.me(token))
+
+
+def test_logout_is_idempotent():
+    repo = FakeAuthRepository()
+    repo.users["patient"] = make_user()
+    service = AuthService(repository=repo)
+
+    token = run(service.login(LoginRequest(username="patient", password="demo123"))).access_token
+    run(service.logout(token))
+    run(service.logout(token))  # 重复注销不抛异常
+
+    with pytest.raises(TokenInvalidError):
+        run(service.me(token))
 
 
 # --- 身份恢复与当前用户查询 ---

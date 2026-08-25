@@ -87,6 +87,21 @@ def _session_count(user_id: str) -> int:
     return row["c"]
 
 
+def _session_revoke_reason(token: str) -> str | None:
+    import hashlib
+
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    conn = _db_connection()
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT revoke_reason FROM auth_session WHERE token_jti_hash=%s",
+            (token_hash,),
+        )
+        row = cur.fetchone()
+    conn.close()
+    return row["revoke_reason"] if row else None
+
+
 @pytest.fixture(scope="module")
 def client():
     app = create_app()
@@ -175,6 +190,24 @@ def test_five_consecutive_failures_lock_account(client):
     resp = _login(client, TEST_PASSWORD)
     assert resp.status_code == 423
     assert resp.json()["code"] == "ACCOUNT_LOCKED"
+
+
+def test_logout_revokes_session(client):
+    resp = _login(client, TEST_PASSWORD)
+    assert resp.status_code == 200
+    token = resp.json()["data"]["accessToken"]
+
+    out = client.post("/api/v1/auth/logout", headers={"Authorization": f"Bearer {token}"})
+    assert out.status_code == 200 and out.json()["code"] == "OK"
+    assert _session_revoke_reason(token) == "user_logout"
+
+    # 注销后令牌失效
+    me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 401 and me.json()["code"] == "TOKEN_INVALID"
+
+    # 幂等：重复注销仍成功
+    out2 = client.post("/api/v1/auth/logout", headers={"Authorization": f"Bearer {token}"})
+    assert out2.status_code == 200
 
 
 def test_multiple_sessions_allowed_for_same_user(client):

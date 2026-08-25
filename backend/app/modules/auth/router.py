@@ -35,3 +35,12 @@ async def me(
     service: AuthService = Depends(get_auth_service),
 ) -> ApiEnvelope[UserSummary]:
     return ok(await service.me(token))
+
+
+@router.post("/logout", response_model=ApiEnvelope[None])
+async def logout(
+    token: str = Depends(require_bearer_token),
+    service: AuthService = Depends(get_auth_service),
+) -> ApiEnvelope[None]:
+    await service.logout(token)
+    return ok(None)
