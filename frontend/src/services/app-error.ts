@@ -1,6 +1,9 @@
 export type AppErrorCode =
   | 'AUTH_INVALID'
+  | 'TOKEN_INVALID'
   | 'TOKEN_EXPIRED'
+  | 'ACCOUNT_DISABLED'
+  | 'ACCOUNT_LOCKED'
   | 'FORBIDDEN'
   | 'CONTEXT_INVALID'
   | 'INSTANCE_INVALID'
@@ -11,7 +14,10 @@ export type AppErrorCode =
 
 const fallbackMessages: Record<AppErrorCode, string> = {
   AUTH_INVALID: '账号或密码错误',
+  TOKEN_INVALID: '登录凭证无效，请重新登录',
   TOKEN_EXPIRED: '登录已过期，请重新登录',
+  ACCOUNT_DISABLED: '账号已停用',
+  ACCOUNT_LOCKED: '账号已临时锁定，请稍后再试',
   FORBIDDEN: '当前账号无权访问该资源',
   CONTEXT_INVALID: '诊疗上下文无效，请重新选择',
   INSTANCE_INVALID: 'AI 会话已失效，请重新开始',

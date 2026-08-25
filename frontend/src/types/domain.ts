@@ -2,7 +2,6 @@ export interface UserSummary {
   id: string
   displayName: string
   role: string
-  organization: string
 }
 
 export interface AuthSession {

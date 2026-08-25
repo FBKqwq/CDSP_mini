@@ -30,7 +30,6 @@ const user: UserSummary = {
   id: 'user-patient-001',
   displayName: '李女士',
   role: '患者',
-  organization: '个人健康账户',
 }
 
 let patientProfile: PatientProfile = {
