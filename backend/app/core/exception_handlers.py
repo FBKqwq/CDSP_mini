@@ -3,21 +3,44 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.contracts import ApiEnvelope
-from app.core.errors import FeatureNotImplementedError
+from app.core.errors import BusinessError, FeatureNotImplementedError
 
 
 def _error(status_code: int, code: str, message: str) -> JSONResponse:
-    payload = ApiEnvelope[None](success=False, code=code, message=message, data=None)
-    return JSONResponse(status_code=status_code, content=payload.model_dump(mode="json", by_alias=True))
+    payload = ApiEnvelope[None](
+        success=False,
+        code=code,
+        message=message,
+        data=None,
+    )
+    return JSONResponse(
+        status_code=status_code,
+        content=payload.model_dump(mode="json", by_alias=True),
+    )
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(BusinessError)
+    async def handle_business_error(
+        _request: Request,
+        exc: BusinessError,
+    ) -> JSONResponse:
+        return _error(
+            exc.status_code,
+            exc.code,
+            exc.message,
+        )
+
     @app.exception_handler(FeatureNotImplementedError)
     async def handle_not_implemented(
         _request: Request,
         exc: FeatureNotImplementedError,
     ) -> JSONResponse:
-        return _error(501, "NOT_IMPLEMENTED", str(exc))
+        return _error(
+            501,
+            "NOT_IMPLEMENTED",
+            str(exc),
+        )
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(
@@ -25,4 +48,8 @@ def register_exception_handlers(app: FastAPI) -> None:
         _exc: RequestValidationError,
     ) -> JSONResponse:
         # Do not echo raw request fields: they may contain medical information.
-        return _error(422, "VALIDATION_ERROR", "请求参数校验失败")
+        return _error(
+            422,
+            "VALIDATION_ERROR",
+            "请求参数校验失败",
+        )

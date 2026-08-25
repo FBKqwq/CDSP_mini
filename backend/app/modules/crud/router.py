@@ -1,5 +1,24 @@
 from fastapi import APIRouter, Depends, Query
 
+from app.db.models import AppUser
+from app.modules.auth.dependencies import get_current_user
+from app.modules.crud.medical_history_service import (
+    MedicalHistoryService,
+    get_medical_history_service,
+)
+
+from app.modules.crud.medical_history_service import (
+    MedicalHistoryService,
+    get_medical_history_service,
+)
+
+from app.db.models import AppUser
+from app.modules.auth.dependencies import get_current_user
+from app.modules.crud.patient_profile_service import (
+    PatientProfileService,
+    get_patient_profile_service,
+)
+
 from app.contracts import ApiEnvelope, ConsultationContext, ok
 from app.modules.crud.schemas import (
     ConsultationSnapshot,
@@ -23,53 +42,96 @@ from app.modules.crud.service import CrudService, get_crud_service
 router = APIRouter(prefix="/llm-chart", tags=["Clinical CRUD"])
 
 
-@router.get("/patient-profile", response_model=ApiEnvelope[PatientProfileRead])
-async def get_patient_profile(
-    service: CrudService = Depends(get_crud_service),
+@router.get(
+    "/patient-profile",
+    response_model=ApiEnvelope[PatientProfileRead],
+)
+def get_patient_profile(
+    current_user: AppUser = Depends(get_current_user),
+    service: PatientProfileService = Depends(get_patient_profile_service),
 ) -> ApiEnvelope[PatientProfileRead]:
-    return ok(await service.get_patient_profile())
+    return ok(
+        service.get_patient_profile(current_user)
+    )
 
 
-@router.put("/patient-profile", response_model=ApiEnvelope[PatientProfileRead])
-async def update_patient_profile(
+@router.put(
+    "/patient-profile",
+    response_model=ApiEnvelope[PatientProfileRead],
+)
+def update_patient_profile(
     payload: PatientProfileUpdate,
-    service: CrudService = Depends(get_crud_service),
+    current_user: AppUser = Depends(get_current_user),
+    service: PatientProfileService = Depends(get_patient_profile_service),
 ) -> ApiEnvelope[PatientProfileRead]:
-    return ok(await service.update_patient_profile(payload))
+    return ok(
+        service.update_patient_profile(
+            current_user,
+            payload,
+        )
+    )
 
-
-@router.get("/medical-histories", response_model=ApiEnvelope[list[MedicalHistoryRead]])
-async def list_medical_histories(
-    service: CrudService = Depends(get_crud_service),
+@router.get(
+    "/medical-histories",
+    response_model=ApiEnvelope[list[MedicalHistoryRead]],
+)
+def list_medical_histories(
+    current_user: AppUser = Depends(get_current_user),
+    service: MedicalHistoryService = Depends(get_medical_history_service),
 ) -> ApiEnvelope[list[MedicalHistoryRead]]:
-    return ok(await service.list_medical_histories())
+    return ok(
+        service.list_medical_histories(current_user)
+    )
 
-
-@router.post("/medical-histories", response_model=ApiEnvelope[MedicalHistoryRead])
-async def create_medical_history(
+@router.post(
+    "/medical-histories",
+    response_model=ApiEnvelope[MedicalHistoryRead],
+)
+def create_medical_history(
     payload: MedicalHistoryCreate,
-    service: CrudService = Depends(get_crud_service),
+    current_user: AppUser = Depends(get_current_user),
+    service: MedicalHistoryService = Depends(get_medical_history_service),
 ) -> ApiEnvelope[MedicalHistoryRead]:
-    return ok(await service.create_medical_history(payload))
+    return ok(
+        service.create_medical_history(
+            current_user,
+            payload,
+        )
+    )
 
-
-@router.put("/medical-histories/{history_id}", response_model=ApiEnvelope[MedicalHistoryRead])
-async def update_medical_history(
+@router.put(
+    "/medical-histories/{history_id}",
+    response_model=ApiEnvelope[MedicalHistoryRead],
+)
+def update_medical_history(
     history_id: str,
     payload: MedicalHistoryUpdate,
-    service: CrudService = Depends(get_crud_service),
+    current_user: AppUser = Depends(get_current_user),
+    service: MedicalHistoryService = Depends(get_medical_history_service),
 ) -> ApiEnvelope[MedicalHistoryRead]:
-    return ok(await service.update_medical_history(history_id, payload))
+    return ok(
+        service.update_medical_history(
+            current_user,
+            history_id,
+            payload,
+        )
+    )
 
-
-@router.delete("/medical-histories/{history_id}", response_model=ApiEnvelope[None])
-async def delete_medical_history(
+@router.delete(
+    "/medical-histories/{history_id}",
+    response_model=ApiEnvelope[None],
+)
+def delete_medical_history(
     history_id: str,
-    service: CrudService = Depends(get_crud_service),
+    current_user: AppUser = Depends(get_current_user),
+    service: MedicalHistoryService = Depends(get_medical_history_service),
 ) -> ApiEnvelope[None]:
-    await service.delete_medical_history(history_id)
-    return ok(None)
+    service.delete_medical_history(
+        current_user,
+        history_id,
+    )
 
+    return ok(None)
 
 @router.get("/consultation-experts", response_model=ApiEnvelope[list[ConsultationExpertRead]])
 async def list_consultation_experts(
