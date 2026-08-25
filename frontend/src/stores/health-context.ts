@@ -5,255 +5,251 @@ import { toAppError } from '@/services/app-error'
 import { llmChartApi } from '@/services/llm-chart-api'
 
 import type {
-  MedicalHistoryInput,
-  UpdatePatientProfileInput,
+    MedicalHistoryInput,
+    UpdatePatientProfileInput,
 } from '@/types/api'
 
 import type {
-  ConsultationExpert,
-  MedicalHistory,
-  PatientProfile,
+    ConsultationExpert,
+    MedicalHistory,
+    PatientProfile,
 } from '@/types/domain'
 
 
 export const useHealthContextStore = defineStore(
     'health-context',
     () => {
-      const profile = ref<PatientProfile | null>(null)
+        const profile = ref<PatientProfile | null>(null)
 
-      const medicalHistories = ref<MedicalHistory[]>([])
+        const medicalHistories = ref<MedicalHistory[]>([])
 
-      const consultationExperts = ref<ConsultationExpert[]>([])
+        /*
+         * 本次需求不做问诊专家。
+         * 保留字段是为了兼容项目现有代码，
+         * 但不会主动请求 consultation-experts。
+         */
+        const consultationExperts = ref<ConsultationExpert[]>([])
 
-      const loading = ref(false)
-
-      const mutating = ref(false)
-
-      const errorMessage = ref('')
-
-
-      async function loadPatientProfile(): Promise<void> {
-        profile.value = await llmChartApi.getPatientProfile()
-      }
+        const loading = ref(false)
+        const mutating = ref(false)
+        const errorMessage = ref('')
 
 
-      async function loadMedicalHistories(): Promise<void> {
-        medicalHistories.value =
-            await llmChartApi.listMedicalHistories()
-      }
-
-
-      async function loadConsultationExperts(): Promise<void> {
-        consultationExperts.value =
-            await llmChartApi.listConsultationExperts()
-      }
-
-
-      async function loadAll(): Promise<void> {
-        loading.value = true
-        errorMessage.value = ''
-
-        try {
-          const [
-            patientProfile,
-            histories,
-            experts,
-          ] = await Promise.all([
-            llmChartApi.getPatientProfile(),
-            llmChartApi.listMedicalHistories(),
-            llmChartApi.listConsultationExperts(),
-          ])
-
-          profile.value = patientProfile
-          medicalHistories.value = histories
-          consultationExperts.value = experts
-        } catch (error) {
-          errorMessage.value = toAppError(
-              error,
-              'SERVICE_UNAVAILABLE',
-          ).message
-        } finally {
-          loading.value = false
-        }
-      }
-
-
-      function findMedicalHistory(
-          historyId: string | undefined,
-      ): MedicalHistory | undefined {
-        if (!historyId) {
-          return undefined
+        async function loadPatientProfile(): Promise<void> {
+            profile.value =
+                await llmChartApi.getPatientProfile()
         }
 
-        return medicalHistories.value.find(
-            (history) => history.id === historyId,
-        )
-      }
+
+        async function loadMedicalHistories(): Promise<void> {
+            medicalHistories.value =
+                await llmChartApi.listMedicalHistories()
+        }
 
 
-      function findConsultationExpert(
-          expertId: string,
-      ): ConsultationExpert | undefined {
-        return consultationExperts.value.find(
-            (expert) => expert.id === expertId,
-        )
-      }
+        /*
+         * 保留方法供原项目后续功能恢复使用。
+         * 当前登录 + 个人信息需求不要调用。
+         */
+        async function loadConsultationExperts(): Promise<void> {
+            consultationExperts.value =
+                await llmChartApi.listConsultationExperts()
+        }
 
 
-      async function updateProfile(
-          input: UpdatePatientProfileInput,
-      ): Promise<boolean> {
-        mutating.value = true
-        errorMessage.value = ''
+        async function loadAll(): Promise<void> {
+            loading.value = true
+            errorMessage.value = ''
 
-        try {
-          profile.value =
-              await llmChartApi.updatePatientProfile(input)
-
-          return true
-        } catch (error) {
-          const appError = toAppError(error)
-
-          /*
-           * 乐观锁冲突时，立即重新读取服务端最新资料。
-           *
-           * 页面下一次点击“编辑”时，就会使用新的 lockVersion，
-           * 避免用户一直拿旧版本重复提交。
-           */
-          if (appError.code === 'VERSION_CONFLICT') {
             try {
-              await loadPatientProfile()
-            } catch {
-              // 保留原始 VERSION_CONFLICT 错误提示
+                /*
+                 * 当前需求只加载：
+                 *
+                 * 1. 患者资料
+                 * 2. 历史疾病
+                 *
+                 * 不请求 consultation-experts，
+                 * 避免未实现接口影响个人信息页面。
+                 */
+                const [
+                    patientProfile,
+                    histories,
+                ] = await Promise.all([
+                    llmChartApi.getPatientProfile(),
+                    llmChartApi.listMedicalHistories(),
+                ])
+
+                profile.value = patientProfile
+                medicalHistories.value = histories
+            } catch (error) {
+                errorMessage.value = toAppError(
+                    error,
+                    'SERVICE_UNAVAILABLE',
+                ).message
+            } finally {
+                loading.value = false
             }
-          }
-
-          errorMessage.value = appError.message
-
-          return false
-        } finally {
-          mutating.value = false
         }
-      }
 
 
-      async function createMedicalHistory(
-          input: MedicalHistoryInput,
-      ): Promise<boolean> {
-        mutating.value = true
-        errorMessage.value = ''
+        function findMedicalHistory(
+            historyId: string | undefined,
+        ): MedicalHistory | undefined {
+            if (!historyId) {
+                return undefined
+            }
 
-        try {
-          await llmChartApi.createMedicalHistory(input)
-
-          /*
-           * 不直接 append。
-           *
-           * 后端列表有固定排序：
-           * diagnosedAt DESC、updatedAt DESC。
-           * 创建后重新查询，确保前端顺序始终以后端为准。
-           */
-          await loadMedicalHistories()
-
-          return true
-        } catch (error) {
-          errorMessage.value = toAppError(error).message
-
-          return false
-        } finally {
-          mutating.value = false
+            return medicalHistories.value.find(
+                (history) => history.id === historyId,
+            )
         }
-      }
 
 
-      async function updateMedicalHistory(
-          historyId: string,
-          input: MedicalHistoryInput,
-      ): Promise<boolean> {
-        mutating.value = true
-        errorMessage.value = ''
+        function findConsultationExpert(
+            expertId: string,
+        ): ConsultationExpert | undefined {
+            return consultationExperts.value.find(
+                (expert) => expert.id === expertId,
+            )
+        }
 
-        try {
-          await llmChartApi.updateMedicalHistory(
-              historyId,
-              input,
-          )
 
-          await loadMedicalHistories()
+        async function updateProfile(
+            input: UpdatePatientProfileInput,
+        ): Promise<boolean> {
+            mutating.value = true
+            errorMessage.value = ''
 
-          return true
-        } catch (error) {
-          const appError = toAppError(error)
-
-          /*
-           * 病史乐观锁冲突：
-           * 重新获取服务端最新病史列表，
-           * 从而同步新的 lockVersion。
-           */
-          if (appError.code === 'VERSION_CONFLICT') {
             try {
-              await loadMedicalHistories()
-            } catch {
-              // 保留原始 VERSION_CONFLICT 错误提示
+                profile.value =
+                    await llmChartApi.updatePatientProfile(input)
+
+                return true
+            } catch (error) {
+                const appError = toAppError(error)
+
+                if (appError.code === 'VERSION_CONFLICT') {
+                    try {
+                        await loadPatientProfile()
+                    } catch {
+                        // 保留原始版本冲突错误
+                    }
+                }
+
+                errorMessage.value = appError.message
+
+                return false
+            } finally {
+                mutating.value = false
             }
-          }
-
-          errorMessage.value = appError.message
-
-          return false
-        } finally {
-          mutating.value = false
         }
-      }
 
 
-      async function deleteMedicalHistory(
-          historyId: string,
-      ): Promise<boolean> {
-        mutating.value = true
-        errorMessage.value = ''
+        async function createMedicalHistory(
+            input: MedicalHistoryInput,
+        ): Promise<boolean> {
+            mutating.value = true
+            errorMessage.value = ''
 
-        try {
-          await llmChartApi.deleteMedicalHistory(historyId)
+            try {
+                await llmChartApi.createMedicalHistory(input)
 
-          /*
-           * 删除是逻辑删除。
-           * 删除完成后重新查询数据库中的有效病史列表。
-           */
-          await loadMedicalHistories()
+                await loadMedicalHistories()
 
-          return true
-        } catch (error) {
-          errorMessage.value = toAppError(error).message
+                return true
+            } catch (error) {
+                errorMessage.value =
+                    toAppError(error).message
 
-          return false
-        } finally {
-          mutating.value = false
+                return false
+            } finally {
+                mutating.value = false
+            }
         }
-      }
 
 
-      return {
-        profile,
-        medicalHistories,
-        consultationExperts,
+        async function updateMedicalHistory(
+            historyId: string,
+            input: MedicalHistoryInput,
+        ): Promise<boolean> {
+            mutating.value = true
+            errorMessage.value = ''
 
-        loading,
-        mutating,
-        errorMessage,
+            try {
+                await llmChartApi.updateMedicalHistory(
+                    historyId,
+                    input,
+                )
 
-        loadAll,
-        loadPatientProfile,
-        loadMedicalHistories,
-        loadConsultationExperts,
+                await loadMedicalHistories()
 
-        findMedicalHistory,
-        findConsultationExpert,
+                return true
+            } catch (error) {
+                const appError = toAppError(error)
 
-        updateProfile,
-        createMedicalHistory,
-        updateMedicalHistory,
-        deleteMedicalHistory,
-      }
+                if (appError.code === 'VERSION_CONFLICT') {
+                    try {
+                        await loadMedicalHistories()
+                    } catch {
+                        // 保留原始版本冲突错误
+                    }
+                }
+
+                errorMessage.value = appError.message
+
+                return false
+            } finally {
+                mutating.value = false
+            }
+        }
+
+
+        async function deleteMedicalHistory(
+            historyId: string,
+        ): Promise<boolean> {
+            mutating.value = true
+            errorMessage.value = ''
+
+            try {
+                await llmChartApi.deleteMedicalHistory(
+                    historyId,
+                )
+
+                await loadMedicalHistories()
+
+                return true
+            } catch (error) {
+                errorMessage.value =
+                    toAppError(error).message
+
+                return false
+            } finally {
+                mutating.value = false
+            }
+        }
+
+
+        return {
+            profile,
+            medicalHistories,
+            consultationExperts,
+
+            loading,
+            mutating,
+            errorMessage,
+
+            loadAll,
+            loadPatientProfile,
+            loadMedicalHistories,
+            loadConsultationExperts,
+
+            findMedicalHistory,
+            findConsultationExpert,
+
+            updateProfile,
+            createMedicalHistory,
+            updateMedicalHistory,
+            deleteMedicalHistory,
+        }
     },
 )

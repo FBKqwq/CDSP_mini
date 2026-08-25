@@ -36,12 +36,34 @@ const navItems = [
 
 onMounted(async () => {
   await authStore.bootstrap()
+
   if (!authStore.isAuthenticated) {
-    uni.reLaunch({ url: '/pages/login/index' })
+    uni.reLaunch({
+      url: '/pages/login/index',
+    })
     return
   }
-  await consultationStore.initialize()
-  initialized.value = true
+
+  // 本次需求只做登录 + 个人信息。
+  // 清除之前问诊模块遗留的错误状态。
+  consultationStore.errorMessage = ''
+  healthContextStore.errorMessage = ''
+
+  try {
+    await Promise.all([
+      healthContextStore.loadPatientProfile(),
+      healthContextStore.loadMedicalHistories(),
+    ])
+
+    // 登录后直接进入“我的”
+    consultationStore.activeTab = 'profile'
+  } catch (error) {
+    // loadPatientProfile / loadMedicalHistories
+    // 如果失败，由 healthContextStore 负责展示错误。
+    console.error('加载个人信息失败', error)
+  } finally {
+    initialized.value = true
+  }
 })
 
 function shouldConfirmSwitch(): boolean {
