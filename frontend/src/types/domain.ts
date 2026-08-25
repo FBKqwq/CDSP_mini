@@ -2,22 +2,32 @@ export interface UserSummary {
   id: string
   displayName: string
   role: string
-  organization: string
 }
+
 
 export interface AuthSession {
   accessToken: string
-  expiresAt: number
+  expiresAt: string
   user: UserSummary
 }
+
 
 export interface PatientProfile {
   id: string
   code: string
   name: string
   gender: '男' | '女' | '未知'
+
+  // 后端返回，前端展示
+  birthDate?: string
+
+  // 后端根据 birthDate 计算
   age?: number
+
+  // 乐观锁版本
+  lockVersion: number
 }
+
 
 export interface ConsultationExpert {
   id: string
@@ -28,18 +38,17 @@ export interface ConsultationExpert {
   unavailableReason?: string
 }
 
+
 export interface MedicalHistory {
   id: string
   name: string
   description?: string
   diagnosedAt?: string
+
+  // 修改病史必须携带
+  lockVersion: number
 }
 
-export type DiagnosisStage =
-  | 'consultation'
-  | 'preliminary'
-  | 'collaboration'
-  | 'comprehensive'
 
 export interface ConsultationContext {
   sessionVersion: number
@@ -51,8 +60,26 @@ export interface ConsultationContext {
   stage: DiagnosisStage
 }
 
-export type ChatRole = 'user' | 'assistant' | 'system'
-export type MessageStatus = 'pending' | 'streaming' | 'sent' | 'failed'
+
+export type DiagnosisStage =
+    | 'consultation'
+    | 'preliminary'
+    | 'collaboration'
+    | 'comprehensive'
+
+
+export type ChatRole =
+    | 'user'
+    | 'assistant'
+    | 'system'
+
+
+export type MessageStatus =
+    | 'pending'
+    | 'streaming'
+    | 'sent'
+    | 'failed'
+
 
 export interface ChatMessage {
   id: string
@@ -62,29 +89,32 @@ export interface ChatMessage {
   createdAt: number
 }
 
+
 export type SessionState =
-  | 'IDLE'
-  | 'CREATING_INSTANCE'
-  | 'CONNECTING'
-  | 'READY'
-  | 'SENDING'
-  | 'STREAMING'
-  | 'COMPLETED'
-  | 'INTERRUPTED'
-  | 'RECONNECTING'
-  | 'FAILED'
+    | 'IDLE'
+    | 'CREATING_INSTANCE'
+    | 'CONNECTING'
+    | 'READY'
+    | 'SENDING'
+    | 'STREAMING'
+    | 'COMPLETED'
+    | 'INTERRUPTED'
+    | 'RECONNECTING'
+    | 'FAILED'
+
 
 export type StreamEventType =
-  | 'thinking'
-  | 'output_step'
-  | 'tool_call'
-  | 'tool_result'
-  | 'output'
-  | 'output_end'
-  | 'chat_message'
-  | 'stats'
-  | 'error'
-  | 'system'
+    | 'thinking'
+    | 'output_step'
+    | 'tool_call'
+    | 'tool_result'
+    | 'output'
+    | 'output_end'
+    | 'chat_message'
+    | 'stats'
+    | 'error'
+    | 'system'
+
 
 export interface StreamEvent {
   id: string
@@ -95,6 +125,7 @@ export interface StreamEvent {
   timestamp?: number
 }
 
+
 export interface ExecutionStep {
   id: string
   label: string
@@ -102,11 +133,13 @@ export interface ExecutionStep {
   status: 'running' | 'success' | 'failed'
 }
 
+
 export interface SyndromeScore {
   name: string
   value: number
   max: number
 }
+
 
 export interface DiagnosisSummary {
   primaryDiagnosis: string
@@ -118,11 +151,13 @@ export interface DiagnosisSummary {
   syndromeScores: SyndromeScore[]
 }
 
+
 export interface PrescriptionItem {
   medicine: string
   dosage: string
   usage: string
 }
+
 
 export interface Prescription {
   name: string
@@ -131,10 +166,12 @@ export interface Prescription {
   cautions?: string
 }
 
+
 export interface TreatmentResult {
   diagnosis: DiagnosisSummary
   prescription?: Prescription
 }
+
 
 export interface DiagnosisReport {
   id: string
@@ -146,6 +183,7 @@ export interface DiagnosisReport {
   prescription?: Prescription
 }
 
+
 export interface ReportComparisonItem {
   key: string
   label: string
@@ -154,11 +192,13 @@ export interface ReportComparisonItem {
   summary: string
 }
 
+
 export interface ReportComparison {
   reportAId: string
   reportBId: string
   items: ReportComparisonItem[]
 }
+
 
 export interface ConsultationSnapshot {
   id: string
