@@ -1,6 +1,7 @@
+from datetime import date
 from typing import Literal
 
-from pydantic import Field
+from pydantic import ConfigDict, Field, field_validator
 
 from app.contracts.common import ApiModel, ConsultationContext, DiagnosisStage
 
@@ -10,13 +11,35 @@ class PatientProfileRead(ApiModel):
     code: str
     name: str = Field(min_length=1, max_length=80)
     gender: Literal["男", "女", "未知"]
+    birth_date: date | None = Field(default=None, alias="birthDate")
     age: int | None = Field(default=None, ge=0, le=150)
+    lock_version: int = Field(alias="lockVersion", ge=0)
 
 
 class PatientProfileUpdate(ApiModel):
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True, extra="forbid")
+
     name: str = Field(min_length=1, max_length=80)
     gender: Literal["男", "女", "未知"]
-    age: int | None = Field(default=None, ge=0, le=150)
+    birth_date: date | None = Field(default=None, alias="birthDate")
+    lock_version: int = Field(alias="lockVersion", ge=0)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _normalize_name(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("姓名不能为空")
+        return normalized
+
+    @field_validator("birth_date")
+    @classmethod
+    def _validate_birth_date(cls, value: date | None) -> date | None:
+        if value is not None and value > date.today():
+            raise ValueError("出生日期不得晚于当前日期")
+        return value
 
 
 class ConsultationExpertRead(ApiModel):
@@ -32,17 +55,46 @@ class MedicalHistoryRead(ApiModel):
     id: str
     name: str
     description: str | None = None
-    diagnosed_at: str | None = Field(default=None, alias="diagnosedAt")
+    diagnosed_at: date | None = Field(default=None, alias="diagnosedAt")
+    lock_version: int = Field(alias="lockVersion", ge=0)
 
 
 class MedicalHistoryCreate(ApiModel):
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True, extra="forbid")
+
     name: str = Field(min_length=1, max_length=80)
     description: str | None = Field(default=None, max_length=500)
-    diagnosed_at: str | None = Field(default=None, alias="diagnosedAt")
+    diagnosed_at: date | None = Field(default=None, alias="diagnosedAt")
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _normalize_name(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("疾病名称不能为空")
+        return normalized
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _normalize_description(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        return value.strip() or None
+
+    @field_validator("diagnosed_at")
+    @classmethod
+    def _validate_diagnosed_at(cls, value: date | None) -> date | None:
+        if value is not None and value > date.today():
+            raise ValueError("诊断日期不得晚于当前日期")
+        return value
 
 
 class MedicalHistoryUpdate(MedicalHistoryCreate):
-    pass
+    lock_version: int = Field(alias="lockVersion", ge=0)
 
 
 class ChatMessageRead(ApiModel):

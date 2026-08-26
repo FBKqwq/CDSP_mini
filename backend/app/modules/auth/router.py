@@ -21,6 +21,13 @@ async def require_bearer_token(
     return credentials.credentials
 
 
+async def require_current_user(
+    token: str = Depends(require_bearer_token),
+    service: AuthService = Depends(get_auth_service),
+) -> UserSummary:
+    return await service.me(token)
+
+
 @router.post("/login", response_model=ApiEnvelope[LoginResponse])
 async def login(
     payload: LoginRequest,

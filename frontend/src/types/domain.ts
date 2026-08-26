@@ -15,7 +15,9 @@ export interface PatientProfile {
   code: string
   name: string
   gender: '男' | '女' | '未知'
-  age?: number
+  birthDate?: string | null
+  age?: number | null
+  lockVersion: number
 }
 
 export interface ConsultationExpert {
@@ -30,8 +32,9 @@ export interface ConsultationExpert {
 export interface MedicalHistory {
   id: string
   name: string
-  description?: string
-  diagnosedAt?: string
+  description?: string | null
+  diagnosedAt?: string | null
+  lockVersion: number
 }
 
 export type DiagnosisStage =

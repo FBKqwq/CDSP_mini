@@ -33,3 +33,11 @@ def register_exception_handlers(app: FastAPI) -> None:
         exc: DomainError,
     ) -> JSONResponse:
         return _error(exc.status_code, exc.code, exc.message)
+
+    @app.exception_handler(Exception)
+    async def handle_unexpected_error(
+        _request: Request,
+        _exc: Exception,
+    ) -> JSONResponse:
+        # Keep infrastructure details and credentials out of client responses.
+        return _error(500, "INTERNAL_ERROR", "服务器内部错误")

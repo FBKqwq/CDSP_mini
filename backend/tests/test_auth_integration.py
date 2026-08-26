@@ -4,6 +4,7 @@
 测试依赖种子账号 patient / demo123，并在每次用例前后复位其锁状态与失败计数。
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import pytest
@@ -87,19 +88,19 @@ def _session_count(user_id: str) -> int:
     return row["c"]
 
 
-def _session_revoke_reason(token: str) -> str | None:
+def _session_revoke_state(token: str) -> dict | None:
     import hashlib
 
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     conn = _db_connection()
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT revoke_reason FROM auth_session WHERE token_jti_hash=%s",
+            "SELECT revoked_at, revoke_reason FROM auth_session WHERE token_jti_hash=%s",
             (token_hash,),
         )
         row = cur.fetchone()
     conn.close()
-    return row["revoke_reason"] if row else None
+    return row
 
 
 @pytest.fixture(scope="module")
@@ -199,7 +200,10 @@ def test_logout_revokes_session(client):
 
     out = client.post("/api/v1/auth/logout", headers={"Authorization": f"Bearer {token}"})
     assert out.status_code == 200 and out.json()["code"] == "OK"
-    assert _session_revoke_reason(token) == "user_logout"
+    first_state = _session_revoke_state(token)
+    assert first_state is not None
+    assert first_state["revoked_at"] is not None
+    assert first_state["revoke_reason"] == "user_logout"
 
     # 注销后令牌失效
     me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
@@ -208,6 +212,7 @@ def test_logout_revokes_session(client):
     # 幂等：重复注销仍成功
     out2 = client.post("/api/v1/auth/logout", headers={"Authorization": f"Bearer {token}"})
     assert out2.status_code == 200
+    assert _session_revoke_state(token) == first_state
 
 
 def test_multiple_sessions_allowed_for_same_user(client):
@@ -223,3 +228,46 @@ def test_multiple_sessions_allowed_for_same_user(client):
     me2 = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token2}"})
     assert me1.status_code == 200 and me2.status_code == 200
     assert me1.json()["data"]["id"] == me2.json()["data"]["id"]
+
+    # 只吊销当前 Token，另一个登录会话仍有效。
+    assert client.post(
+        "/api/v1/auth/logout",
+        headers={"Authorization": f"Bearer {token1}"},
+    ).status_code == 200
+    assert client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {token1}"},
+    ).json()["code"] == "TOKEN_INVALID"
+    assert client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {token2}"},
+    ).status_code == 200
+
+
+def test_unknown_token_logout_is_idempotent_success(client):
+    response = client.post(
+        "/api/v1/auth/logout",
+        headers={"Authorization": "Bearer integration-unknown-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["code"] == "OK"
+
+
+def test_concurrent_logout_keeps_first_revoke_state(client):
+    token = _login(client, TEST_PASSWORD).json()["data"]["accessToken"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(
+            executor.map(
+                lambda _index: client.post("/api/v1/auth/logout", headers=headers),
+                range(2),
+            )
+        )
+
+    assert [response.status_code for response in responses] == [200, 200]
+    state = _session_revoke_state(token)
+    assert state is not None
+    assert state["revoked_at"] is not None
+    assert state["revoke_reason"] == "user_logout"

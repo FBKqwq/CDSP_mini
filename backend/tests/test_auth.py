@@ -43,6 +43,7 @@ class FakeAuthRepository:
         self.sessions = {}
         self.touched = []
         self.revokes = []
+        self.revoke_attempts = []
 
     async def get_user_by_username(self, username):
         user = self.users.get(username)
@@ -73,6 +74,7 @@ class FakeAuthRepository:
             "user_id": user_id,
             "expires_at": expires_at,
             "revoked_at": None,
+            "revoke_reason": None,
         }
 
     async def get_session_by_token_hash(self, token_hash):
@@ -94,21 +96,30 @@ class FakeAuthRepository:
     async def touch_session(self, session_id, at):
         self.touched.append((session_id, at))
 
-    async def revoke_session(self, session_id, at, reason):
-        self.revokes.append((session_id, reason))
-        for session in self.sessions.values():
-            if session["session_id"] == session_id:
-                session["revoked_at"] = at
+    async def revoke_session_by_token_hash(self, token_hash, reason):
+        self.revoke_attempts.append((token_hash, reason))
+        session = self.sessions.get(token_hash)
+        if session is None or session["revoked_at"] is not None:
+            return
+        revoked_at = utcnow()
+        session["revoked_at"] = revoked_at
+        session["revoke_reason"] = reason
+        self.revokes.append((token_hash, reason, revoked_at))
+
+
+class FailingLogoutRepository(FakeAuthRepository):
+    async def revoke_session_by_token_hash(self, token_hash, reason):
+        raise RuntimeError("database unavailable")
 
 
 def run(coro):
     return asyncio.run(coro)
 
 
-def build_client(service):
+def build_client(service, *, raise_server_exceptions=True):
     app = create_app(Settings(app_name="test", environment="test", cors_origins=()))
     app.dependency_overrides[get_auth_service] = lambda: service
-    return TestClient(app)
+    return TestClient(app, raise_server_exceptions=raise_server_exceptions)
 
 
 # --- 登录 ---
@@ -202,7 +213,7 @@ def test_logout_revokes_session():
 
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     assert repo.sessions[token_hash]["revoked_at"] is not None
-    assert ("user_logout" in [reason for _, reason in repo.revokes])
+    assert repo.sessions[token_hash]["revoke_reason"] == "user_logout"
 
     with pytest.raises(TokenInvalidError):
         run(service.me(token))
@@ -215,10 +226,90 @@ def test_logout_is_idempotent():
 
     token = run(service.login(LoginRequest(username="patient", password="demo123"))).access_token
     run(service.logout(token))
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    first_revoked_at = repo.sessions[token_hash]["revoked_at"]
+    first_reason = repo.sessions[token_hash]["revoke_reason"]
     run(service.logout(token))  # 重复注销不抛异常
 
+    assert repo.sessions[token_hash]["revoked_at"] == first_revoked_at
+    assert repo.sessions[token_hash]["revoke_reason"] == first_reason == "user_logout"
+    assert len(repo.revokes) == 1
     with pytest.raises(TokenInvalidError):
         run(service.me(token))
+
+
+def test_logout_unknown_token_is_idempotent_success():
+    repo = FakeAuthRepository()
+    service = AuthService(repository=repo)
+
+    run(service.logout("unknown-token"))
+
+    assert repo.revokes == []
+    assert len(repo.revoke_attempts) == 1
+
+
+def test_logout_only_revokes_current_session():
+    repo = FakeAuthRepository()
+    repo.users["patient"] = make_user()
+    service = AuthService(repository=repo)
+
+    first = run(service.login(LoginRequest(username="patient", password="demo123"))).access_token
+    second = run(service.login(LoginRequest(username="patient", password="demo123"))).access_token
+    run(service.logout(first))
+
+    with pytest.raises(TokenInvalidError):
+        run(service.me(first))
+    assert run(service.me(second)).id == "user-1"
+
+
+def test_concurrent_logout_preserves_first_revoke_state():
+    repo = FakeAuthRepository()
+    repo.users["patient"] = make_user()
+    service = AuthService(repository=repo)
+    token = run(service.login(LoginRequest(username="patient", password="demo123"))).access_token
+
+    async def logout_twice():
+        await asyncio.gather(service.logout(token), service.logout(token))
+
+    run(logout_twice())
+
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    assert repo.sessions[token_hash]["revoked_at"] is not None
+    assert repo.sessions[token_hash]["revoke_reason"] == "user_logout"
+    assert len(repo.revoke_attempts) == 2
+    assert len(repo.revokes) == 1
+
+
+def test_logout_database_error_is_not_reported_as_success():
+    repo = FailingLogoutRepository()
+    repo.users["patient"] = make_user()
+    service = AuthService(repository=repo)
+    token = run(service.login(LoginRequest(username="patient", password="demo123"))).access_token
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        run(service.logout(token))
+
+    assert run(service.me(token)).id == "user-1"
+
+
+def test_logout_http_database_error_returns_500_and_keeps_session_active():
+    repo = FailingLogoutRepository()
+    repo.users["patient"] = make_user()
+    client = build_client(
+        AuthService(repository=repo),
+        raise_server_exceptions=False,
+    )
+    token = client.post(
+        "/api/v1/auth/login",
+        json={"username": "patient", "password": "demo123"},
+    ).json()["data"]["accessToken"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post("/api/v1/auth/logout", headers=headers)
+
+    assert response.status_code == 500
+    assert response.json()["code"] == "INTERNAL_ERROR"
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
 
 
 # --- 身份恢复与当前用户查询 ---
@@ -349,3 +440,68 @@ def test_me_http_missing_token_returns_token_invalid():
 
     assert response.status_code == 401
     assert response.json()["code"] == "TOKEN_INVALID"
+
+
+def test_logout_http_is_idempotent_and_has_no_request_body():
+    repo = FakeAuthRepository()
+    repo.users["patient"] = make_user()
+    client = build_client(AuthService(repository=repo))
+    token = client.post(
+        "/api/v1/auth/login",
+        json={"username": "patient", "password": "demo123"},
+    ).json()["data"]["accessToken"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post("/api/v1/auth/logout", headers=headers)
+    second = client.post("/api/v1/auth/logout", headers=headers)
+
+    assert first.status_code == 200
+    assert first.json() == {"success": True, "code": "OK", "message": "", "data": None}
+    assert second.status_code == 200
+    assert len(repo.revokes) == 1
+
+
+@pytest.mark.parametrize("authorization", [None, "", "Bearer", "Basic abc"])
+def test_logout_http_missing_or_invalid_bearer_returns_token_invalid(authorization):
+    client = build_client(AuthService(repository=FakeAuthRepository()))
+    headers = {"Authorization": authorization} if authorization is not None else {}
+
+    response = client.post("/api/v1/auth/logout", headers=headers)
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "TOKEN_INVALID"
+
+
+def test_logout_http_unknown_token_is_idempotent_success():
+    client = build_client(AuthService(repository=FakeAuthRepository()))
+
+    response = client.post(
+        "/api/v1/auth/logout",
+        headers={"Authorization": "Bearer unknown-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["code"] == "OK"
+
+
+def test_revoked_token_cannot_access_protected_clinical_endpoints():
+    repo = FakeAuthRepository()
+    repo.users["patient"] = make_user()
+    client = build_client(AuthService(repository=repo))
+    token = client.post(
+        "/api/v1/auth/login",
+        json={"username": "patient", "password": "demo123"},
+    ).json()["data"]["accessToken"]
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.post("/api/v1/auth/logout", headers=headers).status_code == 200
+
+    profile = client.get("/api/v1/llm-chart/patient-profile", headers=headers)
+    histories = client.get("/api/v1/llm-chart/medical-histories", headers=headers)
+    experts = client.get("/api/v1/llm-chart/consultation-experts", headers=headers)
+
+    assert profile.status_code == 401
+    assert profile.json()["code"] == "TOKEN_INVALID"
+    assert histories.status_code == 401
+    assert histories.json()["code"] == "TOKEN_INVALID"
+    assert experts.status_code == 401
+    assert experts.json()["code"] == "TOKEN_INVALID"

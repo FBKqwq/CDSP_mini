@@ -14,6 +14,7 @@ vi.mock('@/services/llm-chart-api', () => ({
 }))
 
 const AUTH_KEY = 'tcm.auth-session'
+const CONTEXT_KEY = 'tcm.context-ids'
 
 function makeSession(overrides: Partial<AuthSession> = {}): AuthSession {
   return {
@@ -110,8 +111,13 @@ describe('authStore 身份恢复（bootstrap）', () => {
     expect(store.session).toBeNull()
   })
 
-  it('退出登录清空会话', async () => {
+  it('退出登录成功后清空会话和业务上下文缓存', async () => {
     storage.set(AUTH_KEY, makeSession())
+    storage.set(CONTEXT_KEY, {
+      patientId: 'patient-1',
+      medicalHistoryId: 'history-1',
+      expertId: 'expert-1',
+    })
     vi.mocked(llmChartApi.me).mockResolvedValue({
       id: 'user-1',
       displayName: '测试用户',
@@ -120,10 +126,78 @@ describe('authStore 身份恢复（bootstrap）', () => {
     vi.mocked(llmChartApi.logout).mockResolvedValue(undefined)
     const store = useAuthStore()
     await store.bootstrap()
-    await store.logout()
+    const success = await store.logout()
 
+    expect(success).toBe(true)
     expect(store.session).toBeNull()
     expect(store.isAuthenticated).toBe(false)
     expect(storage.get(AUTH_KEY)).toBeUndefined()
+    expect(storage.get(CONTEXT_KEY)).toBeUndefined()
+  })
+
+  it.each(['TOKEN_INVALID', 'TOKEN_EXPIRED'] as const)(
+    '退出返回 %s 时按已经退出处理',
+    async (code) => {
+      storage.set(AUTH_KEY, makeSession())
+      vi.mocked(llmChartApi.me).mockResolvedValue(makeSession().user)
+      vi.mocked(llmChartApi.logout).mockRejectedValue(new AppError(code))
+      const store = useAuthStore()
+      await store.bootstrap()
+
+      const success = await store.logout()
+
+      expect(success).toBe(true)
+      expect(store.session).toBeNull()
+      expect(storage.get(AUTH_KEY)).toBeUndefined()
+    },
+  )
+
+  it('网络或 5xx 失败时保留 Token 和当前登录状态', async () => {
+    const cached = makeSession()
+    storage.set(AUTH_KEY, cached)
+    storage.set(CONTEXT_KEY, {
+      patientId: 'patient-1',
+      medicalHistoryId: 'history-1',
+      expertId: 'expert-1',
+    })
+    vi.mocked(llmChartApi.me).mockResolvedValue(cached.user)
+    vi.mocked(llmChartApi.logout).mockRejectedValue(
+      new AppError('SERVICE_UNAVAILABLE', 'server error', 500),
+    )
+    const store = useAuthStore()
+    await store.bootstrap()
+
+    const success = await store.logout()
+
+    expect(success).toBe(false)
+    expect(store.session?.accessToken).toBe(cached.accessToken)
+    expect(storage.get(AUTH_KEY)).toBeTruthy()
+    expect(storage.get(CONTEXT_KEY)).toBeTruthy()
+    expect(store.errorMessage).toBe('退出失败，请检查网络后重试')
+  })
+
+  it('连续提交退出请求时只调用一次接口', async () => {
+    const cached = makeSession()
+    storage.set(AUTH_KEY, cached)
+    vi.mocked(llmChartApi.me).mockResolvedValue(cached.user)
+    let resolveLogout: (() => void) | undefined
+    vi.mocked(llmChartApi.logout).mockImplementation(
+      () => new Promise<void>((resolve) => {
+        resolveLogout = resolve
+      }),
+    )
+    const store = useAuthStore()
+    await store.bootstrap()
+
+    const first = store.logout()
+    await Promise.resolve()
+    const second = await store.logout()
+
+    expect(second).toBe(false)
+    expect(store.loggingOut).toBe(true)
+    expect(llmChartApi.logout).toHaveBeenCalledTimes(1)
+    resolveLogout?.()
+    expect(await first).toBe(true)
+    expect(store.loggingOut).toBe(false)
   })
 })

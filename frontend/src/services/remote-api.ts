@@ -3,7 +3,8 @@ import type {
   CreateChatInstanceResult,
   LlmChartApi,
   LoginInput,
-  MedicalHistoryInput,
+  MedicalHistoryCreateInput,
+  MedicalHistoryUpdateInput,
   UpdatePatientProfileInput,
 } from '@/types/api'
 import type {
@@ -44,11 +45,11 @@ export class RemoteLlmChartApi implements LlmChartApi {
     return request({ path: '/api/v1/llm-chart/medical-histories' })
   }
 
-  createMedicalHistory(input: MedicalHistoryInput): Promise<MedicalHistory> {
+  createMedicalHistory(input: MedicalHistoryCreateInput): Promise<MedicalHistory> {
     return request({ path: '/api/v1/llm-chart/medical-histories', method: 'POST', data: input })
   }
 
-  updateMedicalHistory(historyId: string, input: MedicalHistoryInput): Promise<MedicalHistory> {
+  updateMedicalHistory(historyId: string, input: MedicalHistoryUpdateInput): Promise<MedicalHistory> {
     return request({ path: `/api/v1/llm-chart/medical-histories/${historyId}`, method: 'PUT', data: input })
   }
 

@@ -56,7 +56,9 @@ export function request<T>(options: RequestOptions): Promise<T> {
         if (!payload.success) {
           const code = payload.code as AppErrorCode
           const error = new AppError(code || 'UNKNOWN', payload.message, response.statusCode)
-          if (error.code === 'TOKEN_EXPIRED') uni.$emit('auth:expired')
+          if (error.code === 'TOKEN_INVALID' || error.code === 'TOKEN_EXPIRED') {
+            uni.$emit('auth:expired')
+          }
           reject(error)
           return
         }

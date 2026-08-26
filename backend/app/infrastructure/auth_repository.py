@@ -137,11 +137,19 @@ class MySqlAuthRepository:
                     (at, session_id),
                 )
 
-    async def revoke_session(self, session_id: str, at: datetime, reason: str) -> None:
+    async def revoke_session_by_token_hash(self, token_hash: str, reason: str) -> None:
         pool = await get_pool()
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    "UPDATE auth_session SET revoked_at = %s, revoke_reason = %s WHERE id = %s",
-                    (at, reason, session_id),
+                    """
+                    UPDATE auth_session
+                    SET revoke_reason = CASE
+                            WHEN revoked_at IS NULL THEN %s
+                            ELSE revoke_reason
+                        END,
+                        revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP(3))
+                    WHERE token_jti_hash = %s
+                    """,
+                    (reason, token_hash),
                 )

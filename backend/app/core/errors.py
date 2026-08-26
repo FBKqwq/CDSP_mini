@@ -55,3 +55,27 @@ class AccountLockedError(DomainError):
 
     def __init__(self) -> None:
         super().__init__("账号已临时锁定，请稍后再试")
+
+
+class ProfileNotFoundError(DomainError):
+    code = "PROFILE_NOT_FOUND"
+    status_code = 404
+
+    def __init__(self) -> None:
+        super().__init__("当前账号未绑定有效患者档案")
+
+
+class HistoryNotFoundError(DomainError):
+    code = "HISTORY_NOT_FOUND"
+    status_code = 404
+
+    def __init__(self) -> None:
+        super().__init__("历史疾病不存在")
+
+
+class VersionConflictError(DomainError):
+    code = "VERSION_CONFLICT"
+    status_code = 409
+
+    def __init__(self) -> None:
+        super().__init__("数据已被更新，请重新加载后再试")

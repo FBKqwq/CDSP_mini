@@ -16,6 +16,11 @@ from app.modules.auth.ports import AuthRepository
 from app.modules.auth.schemas import LoginRequest, LoginResponse, UserSummary
 
 
+def hash_access_token(token: str) -> str:
+    """Return the one-way digest persisted in auth_session."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 class AuthService:
     def __init__(
         self,
@@ -53,7 +58,7 @@ class AuthService:
             raise AuthInvalidError()
 
         token = secrets.token_urlsafe(32)
-        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        token_hash = hash_access_token(token)
         expires_at = now + timedelta(hours=self._session_ttl_hours)
         await repository.create_session(
             session_id=new_ulid(),
@@ -72,7 +77,7 @@ class AuthService:
 
     async def me(self, token: str) -> UserSummary:
         repository = self._repository()
-        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        token_hash = hash_access_token(token)
         session = await repository.get_session_by_token_hash(token_hash)
         if session is None or session.revoked_at is not None:
             raise TokenInvalidError()
@@ -94,9 +99,6 @@ class AuthService:
 
     async def logout(self, token: str) -> None:
         repository = self._repository()
-        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-        session = await repository.get_session_by_token_hash(token_hash)
-        # 幂等：会话不存在或已注销，均视为成功。
-        if session is None or session.revoked_at is not None:
-            return
-        await repository.revoke_session(session.session_id, utcnow(), "user_logout")
+        token_hash = hash_access_token(token)
+        # 仓储使用单条原子 UPDATE：不存在或已吊销的会话均按幂等成功处理。
+        await repository.revoke_session_by_token_hash(token_hash, "user_logout")

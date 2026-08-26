@@ -4,6 +4,9 @@ export type AppErrorCode =
   | 'TOKEN_EXPIRED'
   | 'ACCOUNT_DISABLED'
   | 'ACCOUNT_LOCKED'
+  | 'PROFILE_NOT_FOUND'
+  | 'HISTORY_NOT_FOUND'
+  | 'VERSION_CONFLICT'
   | 'FORBIDDEN'
   | 'CONTEXT_INVALID'
   | 'INSTANCE_INVALID'
@@ -18,6 +21,9 @@ const fallbackMessages: Record<AppErrorCode, string> = {
   TOKEN_EXPIRED: '登录已过期，请重新登录',
   ACCOUNT_DISABLED: '账号已停用',
   ACCOUNT_LOCKED: '账号已临时锁定，请稍后再试',
+  PROFILE_NOT_FOUND: '当前账号未绑定有效患者档案',
+  HISTORY_NOT_FOUND: '历史疾病不存在或已被删除',
+  VERSION_CONFLICT: '数据已被更新，请重新加载后再试',
   FORBIDDEN: '当前账号无权访问该资源',
   CONTEXT_INVALID: '诊疗上下文无效，请重新选择',
   INSTANCE_INVALID: 'AI 会话已失效，请重新开始',

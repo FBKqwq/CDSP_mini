@@ -10,10 +10,16 @@ describe('patient profile and medical history mock contract', () => {
     const updatedProfile = await api.updatePatientProfile({
       name: '李女士（更新）',
       gender: '女',
-      age: 47,
+      birthDate: '1979-01-08',
+      lockVersion: original.lockVersion,
     })
 
-    expect(updatedProfile).toMatchObject({ id: original.id, code: original.code, age: 47 })
+    expect(updatedProfile).toMatchObject({
+      id: original.id,
+      code: original.code,
+      birthDate: '1979-01-08',
+      lockVersion: original.lockVersion + 1,
+    })
 
     const created = await api.createMedicalHistory({
       name: '慢性胃炎',
@@ -25,21 +31,28 @@ describe('patient profile and medical history mock contract', () => {
     const updated = await api.updateMedicalHistory(created.id, {
       name: '慢性胃炎',
       description: '症状稳定',
+      lockVersion: created.lockVersion,
     })
     expect(updated.description).toBe('症状稳定')
+    expect(updated.lockVersion).toBe(created.lockVersion + 1)
 
+    await api.deleteMedicalHistory(created.id)
     await api.deleteMedicalHistory(created.id)
     expect((await api.listMedicalHistories()).some((history) => history.id === created.id)).toBe(false)
   })
 
   it('rejects invalid profile data and missing history records', async () => {
     const api = new MockLlmChartApi()
+    const current = await api.getPatientProfile()
 
-    await expect(api.updatePatientProfile({ name: '', gender: '未知', age: 151 })).rejects.toMatchObject({
-      code: 'VALIDATION_ERROR',
-    } satisfies Partial<AppError>)
+    await expect(api.updatePatientProfile({
+      name: '',
+      gender: '未知',
+      birthDate: '2999-01-01',
+      lockVersion: current.lockVersion,
+    })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' } satisfies Partial<AppError>)
     await expect(api.deleteMedicalHistory('history-missing')).rejects.toMatchObject({
-      code: 'CONTEXT_INVALID',
+      code: 'HISTORY_NOT_FOUND',
     } satisfies Partial<AppError>)
   })
 })
