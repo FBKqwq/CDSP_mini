@@ -34,7 +34,7 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
-./.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+uvicorn app.main:app --reload
 ```
 
 具体目录、接口状态和后续接入点见 [backend/README.md](./backend/README.md)。
