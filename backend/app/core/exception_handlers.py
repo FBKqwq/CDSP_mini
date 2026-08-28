@@ -3,7 +3,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.contracts import ApiEnvelope
-from app.core.errors import FeatureNotImplementedError
+from app.core.errors import DomainError, FeatureNotImplementedError
 
 
 def _error(status_code: int, code: str, message: str) -> JSONResponse:
@@ -26,3 +26,18 @@ def register_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         # Do not echo raw request fields: they may contain medical information.
         return _error(422, "VALIDATION_ERROR", "请求参数校验失败")
+
+    @app.exception_handler(DomainError)
+    async def handle_domain_error(
+        _request: Request,
+        exc: DomainError,
+    ) -> JSONResponse:
+        return _error(exc.status_code, exc.code, exc.message)
+
+    @app.exception_handler(Exception)
+    async def handle_unexpected_error(
+        _request: Request,
+        _exc: Exception,
+    ) -> JSONResponse:
+        # Keep infrastructure details and credentials out of client responses.
+        return _error(500, "INTERNAL_ERROR", "服务器内部错误")

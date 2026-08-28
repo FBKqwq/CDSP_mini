@@ -98,6 +98,8 @@ export const useConsultationStore = defineStore('consultation', () => {
     context.expertId = expert?.enabled ? expert.id : ''
     context.sessionVersion += 1
     saveContext()
+    // 本期不包含问诊专家、会话和报告；没有有效专家时不请求这些未实现接口。
+    if (!context.expertId) return
     await restoreContext()
   }
 
@@ -135,10 +137,9 @@ export const useConsultationStore = defineStore('consultation', () => {
     loadingContext.value = true
     errorMessage.value = ''
     try {
-      const [consultation, reportRows] = await Promise.all([
-        hasCompleteContext.value ? llmChartApi.getConsultation(snapshot) : Promise.resolve(null),
-        llmChartApi.listReports(snapshot.patientId),
-      ])
+      const consultation = hasCompleteContext.value
+        ? await llmChartApi.getConsultation(snapshot)
+        : null
       if (!currentVersion(version)) return
       if (consultation) {
         context.consultationId = consultation.id
@@ -147,7 +148,8 @@ export const useConsultationStore = defineStore('consultation', () => {
         currentPrescription.value = consultation.prescription ?? null
         if (consultation.diagnosis) context.stage = consultation.diagnosis.stage
       }
-      reports.value = reportRows
+      // 当前交付范围不包含诊断报告，避免请求后端的 501 占位接口。
+      reports.value = []
     } catch (error) {
       if (currentVersion(version)) errorMessage.value = toAppError(error).message
     } finally {
@@ -348,7 +350,8 @@ export const useConsultationStore = defineStore('consultation', () => {
       currentPrescription.value = result.prescription ?? null
       context.stage = result.diagnosis.stage
       activeTab.value = 'diagnosis'
-      reports.value = await llmChartApi.listReports(context.patientId)
+      // 当前交付范围不包含诊断报告，避免请求后端的 501 占位接口。
+      reports.value = []
     } catch (error) {
       if (currentVersion(version)) errorMessage.value = toAppError(error).message
     } finally {

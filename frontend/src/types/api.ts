@@ -23,13 +23,18 @@ export interface CreateChatInstanceResult {
 export interface UpdatePatientProfileInput {
   name: string
   gender: PatientProfile['gender']
-  age?: number
+  birthDate?: string
+  lockVersion: number
 }
 
-export interface MedicalHistoryInput {
+export interface MedicalHistoryCreateInput {
   name: string
   description?: string
   diagnosedAt?: string
+}
+
+export interface MedicalHistoryUpdateInput extends MedicalHistoryCreateInput {
+  lockVersion: number
 }
 
 export interface LlmChartApi {
@@ -39,8 +44,8 @@ export interface LlmChartApi {
   getPatientProfile(): Promise<PatientProfile>
   updatePatientProfile(input: UpdatePatientProfileInput): Promise<PatientProfile>
   listMedicalHistories(): Promise<MedicalHistory[]>
-  createMedicalHistory(input: MedicalHistoryInput): Promise<MedicalHistory>
-  updateMedicalHistory(historyId: string, input: MedicalHistoryInput): Promise<MedicalHistory>
+  createMedicalHistory(input: MedicalHistoryCreateInput): Promise<MedicalHistory>
+  updateMedicalHistory(historyId: string, input: MedicalHistoryUpdateInput): Promise<MedicalHistory>
   deleteMedicalHistory(historyId: string): Promise<void>
   listConsultationExperts(): Promise<ConsultationExpert[]>
   getConsultation(context: ConsultationContext): Promise<ConsultationSnapshot | null>

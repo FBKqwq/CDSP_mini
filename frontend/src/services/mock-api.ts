@@ -4,7 +4,8 @@ import type {
   CreateChatInstanceResult,
   LlmChartApi,
   LoginInput,
-  MedicalHistoryInput,
+  MedicalHistoryCreateInput,
+  MedicalHistoryUpdateInput,
   UpdatePatientProfileInput,
 } from '@/types/api'
 import type {
@@ -25,12 +26,21 @@ import type {
 
 const wait = (milliseconds = 180) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+const todayText = () => new Date().toISOString().slice(0, 10)
+
+function calculateAge(birthDate?: string): number | undefined {
+  if (!birthDate) return undefined
+  const [year, month, day] = birthDate.split('-').map(Number)
+  const today = new Date()
+  return today.getFullYear() - year - (
+    today.getMonth() + 1 < month || (today.getMonth() + 1 === month && today.getDate() < day) ? 1 : 0
+  )
+}
 
 const user: UserSummary = {
   id: 'user-patient-001',
   displayName: '李女士',
-  role: '患者',
-  organization: '个人健康账户',
+  role: 'patient',
 }
 
 let patientProfile: PatientProfile = {
@@ -38,7 +48,9 @@ let patientProfile: PatientProfile = {
   code: 'P20260819001',
   name: '李女士',
   gender: '女',
-  age: 46,
+  birthDate: '1980-02-01',
+  age: calculateAge('1980-02-01'),
+  lockVersion: 0,
 }
 
 let medicalHistories: MedicalHistory[] = [
@@ -47,14 +59,17 @@ let medicalHistories: MedicalHistory[] = [
     name: '代谢综合征',
     description: '既往诊断，持续随访中',
     diagnosedAt: '2025-11-18',
+    lockVersion: 0,
   },
   {
     id: 'history-hypertension',
     name: '高血压',
     description: '既往诊断，规律监测血压',
     diagnosedAt: '2024-06-03',
+    lockVersion: 0,
   },
 ]
+const deletedHistoryIds = new Set<string>()
 
 const consultationExperts: ConsultationExpert[] = [
   { id: 'expert-fang', name: '方邦江', title: '主任医师', specialty: '代谢与脾胃', enabled: true },
@@ -174,10 +189,20 @@ export class MockLlmChartApi implements LlmChartApi {
   async updatePatientProfile(input: UpdatePatientProfileInput): Promise<PatientProfile> {
     await wait()
     const name = input.name.trim()
-    if (!name || (input.age !== undefined && (input.age < 0 || input.age > 150))) {
+    if (!name || (input.birthDate !== undefined && input.birthDate > todayText())) {
       throw new AppError('VALIDATION_ERROR')
     }
-    patientProfile = { ...patientProfile, ...input, name }
+    if (input.lockVersion !== patientProfile.lockVersion) {
+      throw new AppError('VERSION_CONFLICT')
+    }
+    patientProfile = {
+      ...patientProfile,
+      name,
+      gender: input.gender,
+      birthDate: input.birthDate || undefined,
+      age: calculateAge(input.birthDate),
+      lockVersion: patientProfile.lockVersion + 1,
+    }
     return clone(patientProfile)
   }
 
@@ -186,15 +211,18 @@ export class MockLlmChartApi implements LlmChartApi {
     return clone(medicalHistories)
   }
 
-  async createMedicalHistory(input: MedicalHistoryInput): Promise<MedicalHistory> {
+  async createMedicalHistory(input: MedicalHistoryCreateInput): Promise<MedicalHistory> {
     await wait()
     const name = input.name.trim()
-    if (!name) throw new AppError('VALIDATION_ERROR')
+    if (!name || (input.diagnosedAt !== undefined && input.diagnosedAt > todayText())) {
+      throw new AppError('VALIDATION_ERROR')
+    }
     const history: MedicalHistory = {
       id: `history-${Date.now()}-${medicalHistories.length}`,
       name,
       description: input.description?.trim() || undefined,
       diagnosedAt: input.diagnosedAt || undefined,
+      lockVersion: 0,
     }
     medicalHistories = [...medicalHistories, history]
     return clone(history)
@@ -202,18 +230,24 @@ export class MockLlmChartApi implements LlmChartApi {
 
   async updateMedicalHistory(
     historyId: string,
-    input: MedicalHistoryInput,
+    input: MedicalHistoryUpdateInput,
   ): Promise<MedicalHistory> {
     await wait()
     const index = medicalHistories.findIndex((history) => history.id === historyId)
-    if (index < 0) throw new AppError('CONTEXT_INVALID', '所选历史疾病不存在')
+    if (index < 0) throw new AppError('HISTORY_NOT_FOUND')
     const name = input.name.trim()
-    if (!name) throw new AppError('VALIDATION_ERROR')
+    if (!name || (input.diagnosedAt !== undefined && input.diagnosedAt > todayText())) {
+      throw new AppError('VALIDATION_ERROR')
+    }
+    if (input.lockVersion !== medicalHistories[index].lockVersion) {
+      throw new AppError('VERSION_CONFLICT')
+    }
     const history: MedicalHistory = {
       id: historyId,
       name,
       description: input.description?.trim() || undefined,
       diagnosedAt: input.diagnosedAt || undefined,
+      lockVersion: medicalHistories[index].lockVersion + 1,
     }
     medicalHistories = medicalHistories.map((item) => (item.id === historyId ? history : item))
     return clone(history)
@@ -222,9 +256,11 @@ export class MockLlmChartApi implements LlmChartApi {
   async deleteMedicalHistory(historyId: string): Promise<void> {
     await wait()
     if (!medicalHistories.some((history) => history.id === historyId)) {
-      throw new AppError('CONTEXT_INVALID', '所选历史疾病不存在')
+      if (deletedHistoryIds.has(historyId)) return
+      throw new AppError('HISTORY_NOT_FOUND')
     }
     medicalHistories = medicalHistories.filter((history) => history.id !== historyId)
+    deletedHistoryIds.add(historyId)
   }
 
   async listConsultationExperts(): Promise<ConsultationExpert[]> {

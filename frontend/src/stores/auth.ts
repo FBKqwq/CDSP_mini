@@ -14,6 +14,7 @@ export const useAuthStore = defineStore('auth', () => {
   const session = ref<AuthSession | null>(null)
   const initialized = ref(false)
   const submitting = ref(false)
+  const loggingOut = ref(false)
   const errorMessage = ref('')
 
   const isAuthenticated = computed(
@@ -61,11 +62,28 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function logout(): Promise<void> {
+  async function logout(): Promise<boolean> {
+    if (loggingOut.value) return false
+    loggingOut.value = true
+    errorMessage.value = ''
     try {
-      if (session.value) await llmChartApi.logout()
-    } finally {
+      if (!session.value) {
+        expire()
+        return true
+      }
+      await llmChartApi.logout()
       expire()
+      return true
+    } catch (error) {
+      const appError = toAppError(error, 'SERVICE_UNAVAILABLE')
+      if (appError.code === 'TOKEN_INVALID' || appError.code === 'TOKEN_EXPIRED') {
+        expire()
+        return true
+      }
+      errorMessage.value = '退出失败，请检查网络后重试'
+      return false
+    } finally {
+      loggingOut.value = false
     }
   }
 
@@ -79,6 +97,7 @@ export const useAuthStore = defineStore('auth', () => {
     session,
     initialized,
     submitting,
+    loggingOut,
     errorMessage,
     isAuthenticated,
     bootstrap,

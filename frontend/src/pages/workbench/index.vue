@@ -15,12 +15,15 @@ const healthContextStore = useHealthContextStore()
 const consultationStore = useConsultationStore()
 const selectorType = ref<'history' | 'expert' | null>(null)
 const initialized = ref(false)
+const logoutPending = ref(false)
 const statusBarHeight = `${uni.getSystemInfoSync().statusBarHeight ?? 24}px`
 
 const currentPatient = computed(() => healthContextStore.profile)
 const currentHistory = computed(() => healthContextStore.findMedicalHistory(consultationStore.context.medicalHistoryId))
 const currentExpert = computed(() => healthContextStore.findConsultationExpert(consultationStore.context.expertId))
-const pageError = computed(() => consultationStore.errorMessage || healthContextStore.errorMessage)
+const pageError = computed(
+  () => authStore.errorMessage || consultationStore.errorMessage || healthContextStore.errorMessage,
+)
 const stageName = computed(() => ({
   consultation: '问诊阶段',
   preliminary: '初步分析',
@@ -74,23 +77,37 @@ async function selectContext(id: string): Promise<void> {
 }
 
 async function logout(): Promise<void> {
-  const confirmed = await new Promise<boolean>((resolve) => {
-    uni.showModal({
-      title: '退出登录？',
-      content: '活动连接将关闭，本地身份和问诊上下文标识会被清除。',
-      confirmText: '退出',
-      confirmColor: '#B64B46',
-      success: (result) => resolve(result.confirm),
-      fail: () => resolve(false),
+  if (logoutPending.value) return
+  logoutPending.value = true
+  try {
+    const confirmed = await new Promise<boolean>((resolve) => {
+      uni.showModal({
+        title: '退出登录？',
+        content: '退出后需要重新登录，是否继续？',
+        confirmText: '退出',
+        confirmColor: '#B64B46',
+        success: (result) => resolve(result.confirm),
+        fail: () => resolve(false),
+      })
     })
-  })
-  if (!confirmed) return
-  consultationStore.resetAll()
-  await authStore.logout()
-  uni.reLaunch({ url: '/pages/login/index' })
+    if (!confirmed) return
+
+    const success = await authStore.logout()
+    if (!success) {
+      uni.showToast({ title: '退出失败，请检查网络后重试', icon: 'none' })
+      return
+    }
+
+    consultationStore.resetAll()
+    healthContextStore.resetAll()
+    uni.reLaunch({ url: '/pages/login/index' })
+  } finally {
+    logoutPending.value = false
+  }
 }
 
 function clearError(): void {
+  authStore.errorMessage = ''
   consultationStore.errorMessage = ''
   healthContextStore.errorMessage = ''
 }
@@ -135,7 +152,11 @@ function clearError(): void {
       <view v-else class="main-content">
         <ConsultationPanel v-show="consultationStore.activeTab === 'consultation'" />
         <DiagnosisPanel v-show="consultationStore.activeTab === 'diagnosis'" />
-        <ProfilePanel v-show="consultationStore.activeTab === 'profile'" @logout="logout" />
+        <ProfilePanel
+          v-show="consultationStore.activeTab === 'profile'"
+          :logging-out="logoutPending"
+          @logout="logout"
+        />
       </view>
     </view>
 

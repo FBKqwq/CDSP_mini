@@ -1,0 +1,104 @@
+import hashlib
+import secrets
+from datetime import timedelta
+
+from app.core.errors import (
+    AccountDisabledError,
+    AccountLockedError,
+    AuthInvalidError,
+    FeatureNotImplementedError,
+    TokenExpiredError,
+    TokenInvalidError,
+)
+from app.core.timeutil import to_epoch_ms, utcnow
+from app.core.ulid import new_ulid
+from app.modules.auth.ports import AuthRepository
+from app.modules.auth.schemas import LoginRequest, LoginResponse, UserSummary
+
+
+def hash_access_token(token: str) -> str:
+    """Return the one-way digest persisted in auth_session."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+class AuthService:
+    def __init__(
+        self,
+        repository: AuthRepository | None = None,
+        *,
+        session_ttl_hours: int = 8,
+        lock_threshold: int = 5,
+        lock_minutes: int = 15,
+    ) -> None:
+        self._repository_adapter = repository
+        self._session_ttl_hours = session_ttl_hours
+        self._lock_threshold = lock_threshold
+        self._lock_minutes = lock_minutes
+
+    def _repository(self) -> AuthRepository:
+        if self._repository_adapter is None:
+            raise FeatureNotImplementedError("认证数据仓储")
+        return self._repository_adapter
+
+    async def login(self, payload: LoginRequest) -> LoginResponse:
+        repository = self._repository()
+        user = await repository.get_user_by_username(payload.username)
+        if user is None:
+            raise AuthInvalidError()
+        if not user.enabled:
+            raise AccountDisabledError()
+
+        now = utcnow()
+        if user.locked_until is not None and user.locked_until > now:
+            raise AccountLockedError()
+
+        if user.password != payload.password:
+            lock_until = now + timedelta(minutes=self._lock_minutes)
+            await repository.record_login_failure(user.id, self._lock_threshold, lock_until)
+            raise AuthInvalidError()
+
+        token = secrets.token_urlsafe(32)
+        token_hash = hash_access_token(token)
+        expires_at = now + timedelta(hours=self._session_ttl_hours)
+        await repository.create_session(
+            session_id=new_ulid(),
+            user_id=user.id,
+            token_hash=token_hash,
+            issued_at=now,
+            expires_at=expires_at,
+        )
+        await repository.record_login_success(user.id, now)
+
+        return LoginResponse(
+            access_token=token,
+            expires_at=to_epoch_ms(expires_at),
+            user=UserSummary(id=user.id, display_name=user.display_name, role=user.role),
+        )
+
+    async def me(self, token: str) -> UserSummary:
+        repository = self._repository()
+        token_hash = hash_access_token(token)
+        session = await repository.get_session_by_token_hash(token_hash)
+        if session is None or session.revoked_at is not None:
+            raise TokenInvalidError()
+
+        now = utcnow()
+        if session.expires_at <= now:
+            raise TokenExpiredError()
+        if session.user_deleted:
+            raise TokenInvalidError()
+        if not session.user_enabled:
+            raise AccountDisabledError()
+
+        await repository.touch_session(session.session_id, now)
+        return UserSummary(
+            id=session.user_id,
+            display_name=session.display_name,
+            role=session.role,
+        )
+
+    async def logout(self, token: str) -> None:
+        repository = self._repository()
+        token_hash = hash_access_token(token)
+        # 仓储使用单条原子 UPDATE：不存在或已吊销的会话均按幂等成功处理。
+        await repository.revoke_session_by_token_hash(token_hash, "user_logout")

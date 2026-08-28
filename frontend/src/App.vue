@@ -2,12 +2,14 @@
 import { onHide, onLaunch, onShow } from '@dcloudio/uni-app'
 import { useAuthStore } from '@/stores/auth'
 import { useConsultationStore } from '@/stores/consultation'
+import { useHealthContextStore } from '@/stores/health-context'
 
 onLaunch(async () => {
   const authStore = useAuthStore()
   await authStore.bootstrap()
   uni.$on('auth:expired', () => {
     useConsultationStore().resetAll()
+    useHealthContextStore().resetAll()
     authStore.expire()
     uni.reLaunch({ url: '/pages/login/index' })
   })
