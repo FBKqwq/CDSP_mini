@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">中医智能诊疗</string>
+    <string name="blocked_navigation">已阻止跳转到非受信地址</string>
+    <string name="load_failed_title">无法连接问诊服务</string>
+    <string name="load_failed">页面加载失败：%1$s</string>
+    <string name="http_failed">服务返回异常状态：%1$d</string>
+    <string name="renderer_crashed">页面渲染进程异常退出，请重新加载</string>
+    <string name="renderer_terminated">页面渲染进程已被系统回收，请重新加载</string>
+    <string name="retry">重新加载</string>
+</resources>

@@ -1,0 +1,43 @@
+plugins {
+    id "com.android.application"
+}
+def configuredWebAppUrl = providers.gradleProperty("CDSP_WEB_APP_URL")
+    .getOrElse("http://172.18.0.59:4173/#/pages/workbench/index")
+def escapedWebAppUrl = configuredWebAppUrl
+    .replace("\\", "\\\\")
+    .replace('"', '\\"')
+
+android {
+    namespace "com.cdsp.kiosk"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.cdsp.kiosk"
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName "0.1.0"
+
+        buildConfigField "String", "WEB_APP_URL", "\"${escapedWebAppUrl}\""
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
